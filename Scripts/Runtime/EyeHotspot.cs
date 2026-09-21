@@ -39,6 +39,13 @@ namespace ViitorCloud.KmaxDisplayExample {
         [SerializeField, Range(0f, 0.1f)] private float pulseAmplitude = 0.035f;
         [SerializeField, Range(0.5f, 5f)] private float pulseSpeed = 2.2f;
 
+        [Header("Sizing")]
+        [SerializeField, Tooltip("Hold a constant on-screen size while the model scales up during focus. " +
+            "Without this a badge grows with the part it is pinned to and swamps the view.")]
+        private bool maintainWorldSize = true;
+        [SerializeField, Tooltip("Diameter in metres the badge keeps, whatever the model is scaled to.")]
+        private float worldDiameter = 0.01f;
+
         private MaterialPropertyBlock _propertyBlock;
         private int _partIndex = -1;
         private bool _isSelected;
@@ -82,8 +89,35 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         private void Update() {
+            UpdateWorldSize();
             UpdateBillboarding();
             UpdateAnimation();
+        }
+
+        /// <summary>
+        /// Sets the on-screen diameter this badge holds regardless of the model's scale.
+        /// </summary>
+        public void ConfigureSize(float diameterInMetres) {
+            worldDiameter = diameterInMetres;
+            UpdateWorldSize();
+        }
+
+        /// <summary>
+        /// Counter-scales against the part this badge is pinned to, so focusing a part - which
+        /// scales the whole model - leaves every badge the same size on screen.
+        /// </summary>
+        private void UpdateWorldSize() {
+            if (!maintainWorldSize) {
+                return;
+            }
+
+            Transform parent = transform.parent;
+            float parentScale = parent != null ? parent.lossyScale.x : 1f;
+            if (parentScale <= Mathf.Epsilon) {
+                return;
+            }
+
+            transform.localScale = Vector3.one * (worldDiameter / parentScale);
         }
 
         public void Initialize(int index, Camera camera = null) {

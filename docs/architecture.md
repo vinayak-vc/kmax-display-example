@@ -107,14 +107,19 @@ picks up whichever backend is active without any per-backend game asmdef.
 
 ## Scene: `Scenes/EyeAnatomy.unity`
 
-Four roots:
+Ten roots:
 
 | Root | Contents |
 |---|---|
-| `XRRig` | SDK prefab instance. `Camera` (+`HeadTracker`, `VRRenderer`, `PhysicsRaycaster`) at local Z `-0.5`, `left`/`right` stereo cameras, `pen` (`PenTracker` + `KmaxStylus`) with ray and pointer visuals |
-| `EyeAnatomy` | prefab instance of the `.glb`, fitted to the virtual screen |
+| `XRRig` | SDK prefab instance. `Camera` (+`HeadTracker`, `VRRenderer`, `PhysicsRaycaster`) at local Z `-0.5`, `left`/`right` stereo cameras, `pen` (`PenTracker` + `KmaxStylus`). **Driven in orbit by `ViewerFlyController`** |
+| `EyeModelPivot` | parent of the model; what `EyeManipulator` turns and pans. Never scaled |
+| `EyeModelPivot/EyeAnatomy` | the `.glb` instance; what `EyeFocusView` moves and scales |
 | `Key Light` / `Fill Light` / `Rim Light` | three directionals; only the key casts shadows |
 | `EventSystem` | `EventSystem` + `KmaxInputModule` |
+| `UI` | world-space canvas: `ExpandButton`, `BackButton`, `ResetButton`, `InfoPanel` |
+| `FocusAnchor` | where a focused part is brought to. At the origin |
+| `EyeAnatomyExhibit` | `EyeExplodeView`, `EyeFocusView`, `EyeAnatomyController`, `EyeManipulator`, `ViewerFlyController` |
+| `Ambience` | `AnatomyParticleDirector` + `MoteField` + `FocusBurst` |
 
 ### Coordinate convention
 
@@ -123,26 +128,29 @@ XY plane at Z = 0, and the viewer sits at Z = `-0.5` looking along **+Z**. So
 negative Z is in front of the display (content pops out toward the viewer) and
 positive Z is behind it (content sinks into the display).
 
-With the default `Screen15_6` / 16:9 setting the virtual screen is
-**0.3454 m x 0.1943 m**.
+The rig is set to **`Screen27` / 16:9**, so the virtual screen is
+**0.5977 m x 0.3362 m**. It was `Screen15_6` (0.3454 x 0.1943) earlier in
+development, and anything quoting those numbers predates the change. Nothing
+reads the size as a constant: `EyeFocusView` asks `XRRig.ViewSize` at runtime,
+so framing follows whatever the rig is set to. Only the model's resting fit
+below is baked against a specific size.
 
 ### How the model is fitted
 
-`EyeAnatomy` is placed by three deliberate values rather than by eye:
+`EyeAnatomy` is placed by deliberate values rather than by eye:
 
 - **Rotation `(0, 180, 0)`** - the model's optical axis (retina -> cornea)
   points +Z as authored, and the viewer looks along +Z, so unrotated the eye
   faces away. 180 degrees about Y turns the cornea toward the viewer; the
   measured axis is then `(-0.081, 0.038, -0.996)`.
-- **Uniform scale `0.015043`** - derived as
-  `screenHeight * 0.70 / rawBoundsHeight` = `0.1943 * 0.70 / 9.0394`. The model
-  is authored at roughly 12 m across. Result: 0.1774 x 0.1360 x 0.1803 m, which
-  covers 51% of the screen width and 70% of its height.
-- **Position** - offset so the renderer bounds centre lands exactly on the rig
-  origin, i.e. on the zero-parallax plane. The model then extends 0.090 m in
-  front of the screen and 0.090 m behind it. To bias it further out of the
-  screen, move it toward -Z; keep the pop-out under about half the screen
-  width (0.17 m) to stay comfortable.
+- **Uniform scale `0.026037`** - derived as
+  `screenHeight * 0.70 / rawBoundsHeight` = `0.3362 * 0.70 / 9.0394`. The model
+  is authored roughly 12 m across. Exploded result: 0.3070 x 0.2354 x 0.3121 m,
+  which covers 51% of the screen width and 70% of its height. **Re-derive this
+  if the rig's `ScreenType` changes** - it is the one number tied to it.
+- **Local position `(0.01502, 0.00056, 0.01126)` inside `EyeModelPivot`** -
+  offset so the visual centre of the eyeball globe sits on the pivot origin.
+  Turning the pivot then spins the eye in place with no drift.
 
 Cameras clear to a solid dark colour rather than a skybox (the scene has none),
 which also keeps ghosting down on a stereo panel. Ambient is flat, not skybox.
@@ -156,11 +164,14 @@ whole flow:
 | Component | Knows about | Does |
 |---|---|---|
 | `EyeExplodeView` | the model + a pose set | interpolates every part between its assembled and exploded position; exposes `Expansion`, `SetExpanded`, `TransitionCompleted` |
-| `EyeFocusView` | the model + the XRRig | frames one part and hides the rest; `Focus` / `ClearFocus` |
+| `EyeFocusView` | the model + the XRRig | frames one part and **ghosts** the rest; `Focus` / `ClearFocus` |
+| `EyeManipulator` | the pivot | turntable orbit, pan and zoom of the model, with pitch clamps and damping |
+| `ViewerFlyController` | the XRRig root | spherical orbit navigation of the viewer; owns the `R` reset key |
 | `EyeAnatomyController` | all of the above + the catalog + the UI | the only class that knows the actual flow |
-| `AnatomyInfoPanel` | two `Text` fields | shows a name and description |
-| `EyeHotspot` | nothing | a clickable marker that raises `Clicked` |
-| `EyePartBounds` | - | static helper; measures a part while excluding its marker |
+| `AnatomyInfoPanel` | two `TextMeshProUGUI` fields | shows a name and description |
+| `AnatomyParticleDirector` | two particle systems | ambient depth motes + a burst on selection |
+| `EyeHotspot` | nothing | a numbered, billboarded badge that raises `Clicked`; holds its own on-screen size |
+| `EyePartBounds` | - | static helper; measures a part while excluding its badge |
 
 Data lives in two ScriptableObjects under `Data/`:
 
@@ -172,16 +183,21 @@ Data lives in two ScriptableObjects under `Data/`:
 
 ### The flow
 
-1. `Start` - eye assembled (`Expansion` 0), hotspots inactive, info panel and
+1. `Start` - eye assembled (`Expansion` 0), badges inactive, info panel and
    Back hidden, button reads "Expand eye".
 2. **Expand** - `EyeExplodeView` interpolates to the exploded pose over 0.9 s.
-   On `TransitionCompleted` the controller activates the 18 hotspots.
-3. **Hotspot clicked** - `EyeFocusView` scales and moves the model so that part
-   fills half the view at the focus anchor, hides every other part, and the
-   info panel shows its name and description. Other hotspots are hidden and
-   Back appears.
-4. **Back** - framing and visibility restored, hotspots return.
-5. **Close eye** - hotspots hidden, model interpolates back to assembled.
+   On `TransitionCompleted` the controller activates the 18 numbered badges.
+3. **Badge clicked** - a particle burst fires at the badge, `EyeFocusView`
+   scales and moves the model so that part lands on the focus anchor, every
+   other part is swapped to the ghost material, and the info panel shows the
+   name and description. Back appears.
+4. **Another badge clicked** - badges stay up while focused, so this switches
+   straight to the new part: the old badge deselects, the new one goes gold,
+   and the framing and panel follow. No trip through Back.
+5. **Back** - materials and framing restored, camera and model animate back to
+   the starting pose over 0.45 s.
+6. **Close eye** - badges hidden, model interpolates back to assembled.
+7. **Reset View / `R`** - same restoration as Back, available at any time.
 
 ### Why the explode is baked, not played
 
@@ -200,12 +216,25 @@ is ever re-exported.
 ### Focusing scales the model, never the camera
 
 On a head-tracked stereo rig the camera belongs to the viewer; moving it fights
-the head tracker and breaks the stereo geometry. `EyeFocusView` instead moves
-and scales `EyeAnatomy` so the chosen part lands on the focus anchor at the
-right size.
+the head tracker and breaks the stereo geometry. `EyeFocusView` moves and
+scales `EyeAnatomy` so the chosen part lands on `FocusAnchor` (the origin) at
+the right size, and `ViewerFlyController` orbits the rig *around* that point
+rather than translating it freely.
 
-That has one consequence worth knowing: scaling the whole model up so a small
-part fills the view also blows up its neighbours until they swamp the screen.
-So focusing also hides every other part (`isolateFocusedPart`, on by default).
-The focus anchor sits at x `-0.07` so the framed part stays clear of the info
-panel on the right.
+Two consequences shaped the design:
+
+- **Zoom is capped.** Scaling the model so a small part fills the view also
+  scales its neighbours until they swamp the screen. `maxZoomMultiplier`
+  (2.5x the resting scale) bounds it, which keeps the rest of the eye on
+  screen as context.
+- **Other parts are ghosted, not hidden.** Every non-focused renderer is
+  swapped to `Materials/EyeGhost.mat` (URP Lit, transparent, alpha `0.040`)
+  and restored on `ClearFocus`. The alpha is deliberately very low because
+  about twenty ghost layers overlap and their alpha accumulates.
+
+**Known limitation:** two of the eighteen parts - `Lens` and `Tear film` -
+use the model's own `Mat.1`, a textureless 91% grey at 58% alpha. Focused,
+they are nearly invisible against the dark background no matter how faint the
+ghosts are. The gold badge and the info panel still identify them. Fixing it
+properly means giving those two parts an opaque or emissive material, which is
+a change to the source art's look rather than to this code.

@@ -34,15 +34,18 @@
 
 ## Possible improvements
 
+- [x] ~~Hotspots hidden while a part is focused~~ - done in session 8. Badges
+      stay up and counter-scale to a constant 0.01 m on screen, so clicking
+      another badge switches straight to that part.
 - [ ] Markers are depth-tested and can be occluded. For always-on-top, add a
       URP Render Objects feature with Depth Test = Always on a dedicated layer
       (`URPAssets/URPAsset_Renderer.asset` is writable here; the layer is not).
-- [ ] Hotspots are hidden while a part is focused, so switching parts needs a
-      trip through Back. Keeping them visible needs per-frame counter-scaling,
-      since the model scales up on focus.
-- [ ] Six markers cluster near the middle in the exploded view, where the
+- [ ] Six badges cluster near the middle in the exploded view, where the
       nested shells all sit on one horizontal line. Per-part marker offsets in
       the catalog would spread them.
+- [ ] `Lens` and `Tear film` are nearly invisible when focused - both use the
+      model's translucent `Mat.1`. Needs a call on whether to override those
+      two with an opaque or emissive material. See ai_handoff.md item 0.
 
 ## Conditional
 

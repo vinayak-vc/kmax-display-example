@@ -1,5 +1,61 @@
 # Tasks
 
+## Session 8 (2026-09-21) - badges persist while focused, ghost contrast, doc reconciliation
+
+### Verified first, before changing anything
+
+Re-ran the whole flow in Play mode rather than trusting the session 4-7 notes.
+Console clean, 10 scene roots, rig on `Screen27` (`ViewSize 0.5977 x 0.3362`),
+model at scale `0.026037`, closed by default, `MoteField` at 223 particles.
+Focusing Sclera gave **opaque = 1, ghosted = 20, hidden = 0** with the part
+centred at exactly `(0, 0, 0)` and a `TextMeshProUGUI` panel - so translucency,
+TMP, centring and particles are all genuinely live.
+
+### Fixed & Improved
+
+- **Badges no longer vanish when a part is focused.** This was the last open
+  item in roadmap.md's "Possible improvements": switching parts previously
+  meant a trip through Back.
+  - `EyeAnatomyController.OnExplodeTransitionCompleted` now keys badge
+    visibility off `expanded` alone, not `expanded && !IsFocused`.
+  - `OnHotspotClicked` deselects the previously selected badge and no longer
+    hides the set, so clicking a second badge switches straight to it.
+- **Badges hold a constant on-screen size.** The roadmap noted this needed
+  per-frame counter-scaling, since focusing scales the model. Added
+  `maintainWorldSize` + `worldDiameter` to `EyeHotspot`, which counter-scales
+  against its parent's `lossyScale` each frame. The controller now calls
+  `ConfigureSize(...)` instead of setting `localScale` once at build time.
+- **Ghost contrast.** Roughly twenty ghost layers overlap and their alpha
+  accumulates, so the ghosts were reading brighter than the focused part.
+  `EyeGhost.mat` alpha `0.075` -> `0.040`, and a slightly darker, cooler tint.
+
+### Verified in Play mode
+
+- Badges active while focused: **18/18** (was 0).
+- Badge world diameter `0.01000` m both before focus (model scale `0.026037`)
+  and during it (`0.038`) - counter-scaling holds.
+- Exactly one badge carries the gold selected colour at a time.
+- Clicked Lens directly while Sclera was focused: lens re-centred to
+  `(0.0000, 0.0000, 0.0000)`, panel switched to "Lens", opaque = 1 (lens),
+  ghosted = 20, Sclera deselected. No Back needed.
+- Console clean, scene saved.
+
+### Found, not fixed
+
+- `Lens` and `Tear film` both use the model's `Mat.1` - a textureless 91% grey
+  at 58% alpha - so when focused they are nearly invisible whatever the ghost
+  alpha is. This is the source art, not the isolation system; opaque parts like
+  Sclera read clearly. Recorded in ai_handoff.md as a decision for a human.
+
+### Documentation reconciled
+
+`architecture.md` had drifted several sessions behind and actively contradicted
+the build: it described a 15.6" screen, parts being *hidden* on focus, legacy
+`Text` labels, a four-root scene, `FocusAnchor` at `x -0.07` and model scale
+`0.015043`. Updated the scene table, coordinate convention, model fit, component
+table, flow and focus sections to match what is actually in the scene, and
+fixed the stale screen size in `ai_handoff.md`.
+
 ## Session 7 (2026-09-21) - camera orbit flight, centered part framing, and starting pose reset
 
 Implemented spherical orbit camera flight locking the eye model at the dead center of the screen, centered all selected parts at (0, 0, 0), and added starting pose restoration upon pressing Back.

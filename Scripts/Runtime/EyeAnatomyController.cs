@@ -136,7 +136,9 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         private void OnExplodeTransitionCompleted(bool expanded) {
-            SetHotspotsVisible(expanded && !focusView.IsFocused);
+            // Badges stay up while a part is focused so another part is one click away rather
+            // than a trip through Back. They hold their on-screen size themselves.
+            SetHotspotsVisible(expanded);
         }
 
         private void OnHotspotClicked(EyeHotspot hotspot) {
@@ -144,6 +146,11 @@ namespace ViitorCloud.KmaxDisplayExample {
             if (index < 0 || index >= partCount) {
                 Debug.LogError($"{nameof(EyeAnatomyController)} received a click from a hotspot with an out-of-range index {index}.", this);
                 return;
+            }
+
+            // Clicking a second badge while already focused switches straight to it.
+            if (selectedIndex >= 0 && selectedIndex < partCount && selectedIndex != index) {
+                hotspots[selectedIndex].SetSelected(false);
             }
 
             selectedIndex = index;
@@ -156,7 +163,6 @@ namespace ViitorCloud.KmaxDisplayExample {
                 particles.PlayInteractionBurst(hotspot.transform.position);
             }
 
-            SetHotspotsVisible(false);
             SetBackButtonVisible(true);
             RefreshExpandLabel();
         }
@@ -216,10 +222,9 @@ namespace ViitorCloud.KmaxDisplayExample {
                     worldBounds.center.y,
                     worldBounds.min.z - hotspotFrontGap - hotspotWorldRadius);
 
-                float parentScale = part.lossyScale.x;
-                if (parentScale > Mathf.Epsilon) {
-                    hotspot.transform.localScale = Vector3.one * (hotspotWorldRadius * 2f / parentScale);
-                }
+                // The badge holds this size itself from here on, counter-scaling whenever the
+                // model is scaled up to frame a part.
+                hotspot.ConfigureSize(hotspotWorldRadius * 2f);
 
                 hotspot.Initialize(partCount, activeCamera);
                 hotspot.Clicked += OnHotspotClicked;

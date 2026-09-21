@@ -723,6 +723,7 @@ MonoBehaviour:
   xrRig: {fileID: 263295713}
   focusAnchor: {fileID: 366408957}
   eyeManipulator: {fileID: 587192533}
+  flyController: {fileID: 0}
   framingRatio: 0.48
   maxZoomMultiplier: 2.5
   transitionDuration: 0.6
@@ -772,14 +773,22 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: KmaxDisplayExample::ViitorCloud.KmaxDisplayExample.ViewerFlyController
   rigRoot: {fileID: 1586624684}
-  eyeManipulator: {fileID: 587192533}
   exhibitController: {fileID: 587192528}
   enableFly: 1
-  moveSpeed: 0.25
+  focalCenter: {x: 0, y: 0, z: 0}
+  defaultDistance: 0.5
+  minDistance: 0.12
+  maxDistance: 1.2
+  mouseOrbitSpeed: 0.25
+  keyOrbitSpeed: 80
+  keyDollySpeed: 0.35
+  scrollDollySpeed: 0.05
   boostMultiplier: 3
-  lookSensitivity: 0.15
-  dollySpeed: 0.06
-  panSpeed: 0.0006
+  minPitch: -80
+  maxPitch: 80
+  orbitSmoothTime: 0.06
+  dollySmoothTime: 0.08
+  resetDuration: 0.45
   resetKey: 114
   boostKey: 304
 --- !u!114 &587192533
@@ -811,6 +820,7 @@ MonoBehaviour:
   zoomSmoothTime: 0.08
   keyRotateSpeed: 90
   panModifier: 304
+  disablePointerManipulation: 1
 --- !u!1 &595144704
 GameObject:
   m_ObjectHideFlags: 0
@@ -931,6 +941,7 @@ GameObject:
   m_Component:
   - component: {fileID: 604677463}
   - component: {fileID: 604677462}
+  - component: {fileID: 604677464}
   m_Layer: 0
   m_Name: Rim Light
   m_TagString: Untagged
@@ -1018,6 +1029,35 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &604677464
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 604677461}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalLightData
+  m_UsePipelineSettings: 1
+  m_AdditionalLightsShadowResolutionTier: 2
+  m_CustomShadowLayers: 0
+  m_LightCookieSize: {x: 1, y: 1}
+  m_LightCookieOffset: {x: 0, y: 0}
+  m_SoftShadowQuality: 0
+  m_RenderingLayersMask:
+    serializedVersion: 0
+    m_Bits: 1
+  m_ShadowRenderingLayersMask:
+    serializedVersion: 0
+    m_Bits: 1
+  m_Version: 4
+  m_LightLayerMask: 1
+  m_ShadowLayerMask: 1
+  m_RenderingLayers: 1
+  m_ShadowRenderingLayers: 1
 --- !u!1 &649347776
 GameObject:
   m_ObjectHideFlags: 0

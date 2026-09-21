@@ -55,8 +55,14 @@ Render pipeline: **URP**, via `URPAssets/URPAsset.asset`.
   swapped - it depends on whether the model is a left or a right eye, which the
   geometry does not settle. decisions.md has the measurements.
 - **Scene coordinates.** The XRRig transform is the virtual screen. Viewer at
-  Z `-0.5` looking along +Z, so **negative Z pops out of the display**. Screen
-  is 0.3454 x 0.1943 m at the default `Screen15_6` / 16:9.
+  Z `-0.5` looking along +Z, so **negative Z pops out of the display**. The rig
+  is set to `Screen27` / 16:9, so the screen is **0.5977 x 0.3362 m**. Framing
+  reads `XRRig.ViewSize` at runtime and follows this automatically; the one
+  thing tied to it is the model's resting scale (`0.026037`), which must be
+  re-derived if `ScreenType` changes. See architecture.md.
+- **Badges stay up while a part is focused** and hold a constant 0.01 m
+  on-screen size by counter-scaling against the model. Clicking another badge
+  switches straight to that part.
 - **`XRRig.ViewSize` follows the Game view aspect at runtime.** In a portrait
   editor Game view it reports portrait, and the focus framing adapts to it.
   That is correct behaviour, but it means editor framing will not match the
@@ -74,6 +80,12 @@ Render pipeline: **URP**, via `URPAssets/URPAsset.asset`.
 
 ## What still needs a human
 
+0. **Decide about `Lens` and `Tear film`.** Both use the model's `Mat.1`, a
+   textureless 91% grey at 58% alpha, so when focused they are nearly
+   invisible against the dark background - the badge and panel identify them
+   but the geometry barely reads. Giving those two an opaque or emissive
+   material would fix it, but that changes the source art's intent.
+   architecture.md has the detail.
 1. **Review the two rectus labels** (above).
 2. **Run it on a Kmax device.** Stereo output, head tracking and stylus input
    are all unverified end to end.
