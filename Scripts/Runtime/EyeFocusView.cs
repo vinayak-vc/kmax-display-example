@@ -18,7 +18,9 @@ namespace ViitorCloud.KmaxDisplayExample {
         private Transform focusAnchor;
         [SerializeField, Tooltip("Optional reference to EyeManipulator to update rotation pivot on focus.")]
         private EyeManipulator eyeManipulator;
-        [SerializeField, Range(0.1f, 1f)] private float framingRatio = 0.55f;
+        [SerializeField, Tooltip("Optional reference to ViewerFlyController to update orbit focal center on focus.")]
+        private ViewerFlyController flyController;
+        [SerializeField, Range(0.1f, 1f)] private float framingRatio = 0.48f;
         [SerializeField, Tooltip("Hard ceiling on the zoom, as a multiple of the model's resting scale. " +
             "The smallest parts are a sixth of the eye, so framing one to fill the view would blow the " +
             "rest of the eye far off screen - which defeats keeping it visible behind the focus.")]
@@ -67,6 +69,10 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             if (eyeManipulator == null) {
                 eyeManipulator = GetComponent<EyeManipulator>();
+            }
+
+            if (flyController == null) {
+                flyController = GetComponent<ViewerFlyController>();
             }
 
             restLocalPosition = modelRoot.localPosition;
@@ -133,6 +139,10 @@ namespace ViitorCloud.KmaxDisplayExample {
                 eyeManipulator.SetFocalPoint(anchor);
             }
 
+            if (flyController != null) {
+                flyController.SetFocalCenter(anchor);
+            }
+
             BeginTransition(ToLocal(worldTarget), Vector3.one * targetScale);
             isFocused = true;
         }
@@ -144,6 +154,10 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             if (eyeManipulator != null) {
                 eyeManipulator.ClearFocalPoint();
+            }
+
+            if (flyController != null) {
+                flyController.ResetFocalCenter();
             }
 
             SetFadedExcept(null);

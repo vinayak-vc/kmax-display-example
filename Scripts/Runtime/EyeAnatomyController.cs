@@ -176,6 +176,14 @@ namespace ViitorCloud.KmaxDisplayExample {
             SetBackButtonVisible(false);
             SetHotspotsVisible(explodeView.IsExpanded);
             RefreshExpandLabel();
+
+            if (flyController != null) {
+                flyController.ResetView(true);
+            }
+
+            if (manipulator != null) {
+                manipulator.ResetTransform(true);
+            }
         }
 
         private void BuildHotspots() {

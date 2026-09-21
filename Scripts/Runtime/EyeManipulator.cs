@@ -51,6 +51,10 @@ namespace ViitorCloud.KmaxDisplayExample {
         [SerializeField, Tooltip("Held with the arrow keys to pan instead of rotate.")]
         private KeyCode panModifier = KeyCode.LeftShift;
 
+        [Header("Coordination")]
+        [SerializeField, Tooltip("When true, ViewerFlyController drives camera orbit, so model pointer manipulation is bypassed.")]
+        private bool disablePointerManipulation = true;
+
         private Quaternion _restRotation;
         private Vector3 _restPosition;
         private Vector3 _restScale;
@@ -112,7 +116,7 @@ namespace ViitorCloud.KmaxDisplayExample {
         private void Update() {
             if (_isAnimatedReset) {
                 UpdateAnimatedReset();
-            } else {
+            } else if (!disablePointerManipulation) {
                 UpdatePointer();
                 UpdateKeyboard();
                 UpdateScrollZoom();

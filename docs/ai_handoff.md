@@ -10,16 +10,22 @@ a name and a short description. Over 220 ambient motes float in 3D stereoscopic 
 and the badges gently breathe to give the display an organic living presence.
 
 Navigation controls:
-- **Turntable model orbit**: Left-click drag on the model rotates around the eyeball
-  globe center in overview, or around the focused part's center when a part is in focus,
-  with pitch clamping (`[-75°, +75°]`) to prevent flipping upside down.
-- **Fly camera**: Enabled via `ViewerFlyController.cs`. Right-click drag to look around
-  (pitch/yaw), WASD to translate (forward/back/strafe), Q/E to rise/sink, Left Shift
-  to boost speed 3x, and middle-click drag to pan the camera rig.
-- **Zoom / Dolly**: Scroll wheel zooms the model; holding right-click while scrolling
-  dollys the camera rig.
-- **Unified reset**: A dedicated "Reset View" UI button and the 'R' key smoothly animate
-  both the model and the fly camera rig back to their forward-facing default state.
+- **Spherical Orbit Camera**: Powered by `ViewerFlyController.cs`. The camera always
+  flies and rotates in orbit around the eye, locking the focal center at the dead center
+  of the screen (`viewport = (0.5000, 0.5000)`) across all angles and distances.
+  - **Mouse Drag (Left or Right Click)**: Orbits yaw and pitch with smooth damping; pitch
+    clamped to `[-80°, +80°]`.
+  - **W / S**: Flies forward / backward in orbit (dollies toward or away from center).
+  - **A / D**: Flies in an orbital circle left / right around the eye.
+  - **Q / E**: Flies in an orbital arc down / up around the eye.
+  - **Arrow Keys**: Orbit yaw and pitch.
+  - **Left Shift**: 2.5x speed boost.
+  - **Scroll Wheel**: Smoothly dollies in / out toward/away from center.
+- **Centered Part Focus**: When any part is clicked, `EyeFocusView.cs` frames it at
+  the exact center of the screen `(0, 0, 0)`, and the camera orbit remains centered on it.
+- **Starting Pose Reset on Back**: Pressing "Back" exits focus and smoothly animates both
+  the camera and model back to their exact 1st default starting position `(0, 0, 0)` over 0.45s.
+- **Unified Reset**: Dedicated "Reset View" UI button and 'R' key smoothly restore starting view.
 
 Active SDK backend: **Kmax XR Core 2.5.2** (`KMAX_AIO_K1` undefined).
 Render pipeline: **URP**, via `URPAssets/URPAsset.asset`.

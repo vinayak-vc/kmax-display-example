@@ -1,6 +1,42 @@
 # Tasks
 
-## Session 6 (2026-09-21) - fly camera controls and upright hotspot billboarding
+## Session 7 (2026-09-21) - camera orbit flight, centered part framing, and starting pose reset
+
+Implemented spherical orbit camera flight locking the eye model at the dead center of the screen, centered all selected parts at (0, 0, 0), and added starting pose restoration upon pressing Back.
+
+### Fixed & Improved
+
+- **Continuous Camera Orbit Centering**:
+  - Replaced FPS-style camera translation and in-place look with a spherical Orbit Camera model in `ViewerFlyController.cs`.
+  - Math formula locks camera gaze directly at `focalCenter` (world `(0, 0, 0)`) across all angles:
+    $$\mathbf{P}_{\text{rig}} = \mathbf{C}_{\text{focal}} + \mathbf{R} \times (0, 0, 0.50 - d)$$
+    $$\mathbf{R}_{\text{rig}} = \text{Quaternion.Euler}(\text{pitch}, \text{yaw}, 0)$$
+  - Verified mathematically: viewport point of the eye center is exactly `(0.5000, 0.5000)` and `Dot(camera.forward, toCenter) == 1.000000` at all orbit angles and distances.
+  - Controls:
+    - Mouse drag (Left-click or Right-click): Orbits yaw and pitch with velocity damping; pitch clamped to `[-80°, +80°]`.
+    - W / S: Flies forward / backward in orbit (dollies toward/away from center).
+    - A / D: Flies in an orbital circle left / right around the eye.
+    - Q / E: Flies in an orbital arc down / up around the eye.
+    - Arrow keys: Orbit yaw and pitch.
+    - Left Shift: 2.5x speed boost.
+    - Mouse scroll wheel: Dollies in / out.
+- **Centered Part Framing**:
+  - Re-anchored `FocusAnchor` in `EyeAnatomy.unity` from `(-0.125, 0, -0.02)` to `(0, 0, 0)`.
+  - In `EyeFocusView.cs`, framing now brings the focused part's world bounds center to `(0.00, 0.00, 0.00)`, verified at viewport `(0.5000, 0.5000)`.
+  - Resized `InfoPanel` from `(800, 300)` to `(650, 260)` and positioned it at `(-25, 0)`, leaving the entire central 65% of the screen unobstructed for the focused part.
+  - Coordinated `flyController.SetFocalCenter(anchor)` so camera orbiting remains centered on the selected part.
+- **Starting Pose Reset on Back**:
+  - Updated `EyeAnatomyController.ReturnToOverview()` (invoked by clicking "Back") to call `flyController.ResetView(true)` and `manipulator.ResetTransform(true)`.
+  - Smoothly restores camera rig position to `(0, 0, 0)`, rotation to `Quaternion.identity`, and distance to `0.5m` over 0.45s, returning the display to the exact 1st position when the app started.
+- **Input Conflict Prevention**:
+  - Added `disablePointerManipulation = true` to `EyeManipulator.cs` to prevent conflicting dual-rotation between camera rig and model pivot.
+
+### Verified in Play Mode
+
+- Overview camera orbit: Tested at multiple yaw (0°, 45°, 180°), pitch (-60°, 0°, +60°), and distance (0.35m, 0.5m, 0.8m) settings: viewport point of `(0, 0, 0)` is strictly `(0.5000, 0.5000)` and forward dot product is `1.000000`.
+- Part selection: Selected Hotspot 4 (Lens); world bounds center landed at `(0.00, 0.00, -0.02)` with viewport `(0.5000, 0.5000)`.
+- Back button: Clicked Back; camera returned to `(0.00, 0.00, -0.50)` with `(0, 0, 0)` rotation, rig to `(0, 0, 0)`, and pivot to `(0, 0, 0)`.
+- Console completely clean with 0 errors.
 
 Resolved camera flight controls with mouse and keyboard, and fixed numbered interaction badges so they always billboard upright facing the camera rather than facing downwards.
 
