@@ -1,0 +1,20 @@
+{
+	"name": "KmaxDisplayExample.Anatomy.Editor",
+	"rootNamespace": "ViitorCloud.KmaxDisplayExample.Editor",
+	"references": [
+		"KmaxDisplayExample"
+	],
+	"includePlatforms": [
+		"Editor"
+	],
+	"excludePlatforms": [],
+	"allowUnsafeCode": false,
+	"overrideReferences": false,
+	"precompiledReferences": [],
+	"autoReferenced": false,
+	"defineConstraints": [
+		"!KMAX_AIO_K1"
+	],
+	"versionDefines": [],
+	"noEngineReferences": false
+}

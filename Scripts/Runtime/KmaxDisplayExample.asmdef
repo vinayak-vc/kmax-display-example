@@ -1,0 +1,21 @@
+{
+	"name": "KmaxDisplayExample",
+	"rootNamespace": "ViitorCloud.KmaxDisplayExample",
+	"references": [
+		"KmaxXR.Core",
+		"Kmax.InputModule",
+		"UnityEngine.UI",
+		"Unity.TextMeshPro"
+	],
+	"includePlatforms": [],
+	"excludePlatforms": [],
+	"allowUnsafeCode": false,
+	"overrideReferences": false,
+	"precompiledReferences": [],
+	"autoReferenced": true,
+	"defineConstraints": [
+		"!KMAX_AIO_K1"
+	],
+	"versionDefines": [],
+	"noEngineReferences": false
+}

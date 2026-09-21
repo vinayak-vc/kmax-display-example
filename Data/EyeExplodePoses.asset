@@ -1,0 +1,84 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56b892bea79d61a4181c138c0f79285c, type: 3}
+  m_Name: EyeExplodePoses
+  m_EditorClassIdentifier: KmaxDisplayExample::ViitorCloud.KmaxDisplayExample.EyeExplodePoseSet
+  poses:
+  - partPath: eye/cornea_inside
+    closedPosition: {x: -42.21936, y: 235.35295, z: -8.364265}
+    openPosition: {x: -42.21936, y: 304.50497, z: -8.364265}
+  - partPath: eye/cornea_outside
+    closedPosition: {x: 55.917786, y: 242.37564, z: -1.6233171}
+    openPosition: {x: 55.917786, y: 356.16812, z: -1.6233171}
+  - partPath: eye/eye_muscles
+    closedPosition: {x: -0.14766148, y: 55.52805, z: 1.881535}
+    openPosition: {x: -0.14766148, y: 55.52805, z: 1.881535}
+  - partPath: eye/eye_muscles/muscle_0
+    closedPosition: {x: -95.0107, y: 29.056622, z: -239.32722}
+    openPosition: {x: -174.33478, y: 29.056622, z: -365.27322}
+  - partPath: eye/eye_muscles/muscle_1
+    closedPosition: {x: 146.40204, y: -242.18912, z: -5.1753883}
+    openPosition: {x: 459.23737, y: -242.18912, z: -5.1753883}
+  - partPath: eye/eye_muscles/muscle_3
+    closedPosition: {x: 22.210508, y: -228.4893, z: -154.69217}
+    openPosition: {x: 22.210508, y: -228.4893, z: -313.71347}
+  - partPath: eye/eye_muscles/muscle_4
+    closedPosition: {x: -45.29479, y: -6.959248, z: 202.15475}
+    openPosition: {x: -26.688286, y: -6.959248, z: 401.10913}
+  - partPath: eye/eye_muscles/muscle_5
+    closedPosition: {x: 22.72643, y: -228.4893, z: 153.47278}
+    openPosition: {x: 22.72643, y: -228.4893, z: 272.85153}
+  - partPath: eye/eye_muscles/muscle_6
+    closedPosition: {x: -137.2321, y: -266.4265, z: -4.930867}
+    openPosition: {x: -490.894, y: -266.4265, z: -4.930867}
+  - partPath: eye/eye_over_cornea
+    closedPosition: {x: 58.939526, y: 274.20538, z: 1.0307003}
+    openPosition: {x: 58.939526, y: 454.96454, z: 1.0307003}
+  - partPath: eye/eye_sphere_inside
+    closedPosition: {x: -86.96119, y: 13.359173, z: 2.020802}
+    openPosition: {x: -188.21667, y: 13.359173, z: 2.020802}
+  - partPath: eye/eye_sphere_outside
+    closedPosition: {x: 107.213036, y: 30.115982, z: 2.1460412}
+    openPosition: {x: 359.25418, y: 30.115982, z: 2.1460412}
+  - partPath: eye/half_veins
+    closedPosition: {x: -92.28938, y: 31.11826, z: 1.0450933}
+    openPosition: {x: -413.9868, y: 31.11826, z: 1.0450933}
+  - partPath: eye/lens
+    closedPosition: {x: -0.14766096, y: 204.8552, z: 1.8585647}
+    openPosition: {x: -0.14766096, y: 204.8552, z: 1.8585647}
+  - partPath: eye/optical_nerv
+    closedPosition: {x: 21.228437, y: -182.83076, z: -9.822122}
+    openPosition: {x: 21.228437, y: -324.68073, z: -9.822122}
+  - partPath: eye/optical_nerv/artery_retina_inside_1
+    closedPosition: {x: 66.88035, y: 100.679985, z: -77.09165}
+    openPosition: {x: 58.961514, y: 100.679985, z: -199.44048}
+  - partPath: eye/optical_nerv/nerv_element_1
+    closedPosition: {x: -40.002743, y: -156.3166, z: 12.764194}
+    openPosition: {x: -62.05233, y: -156.3166, z: 70.21974}
+  - partPath: eye/optical_nerv/nerv_element_2
+    closedPosition: {x: 28.647316, y: -97.362495, z: 36.18095}
+    openPosition: {x: 62.092045, y: -97.362495, z: 75.443306}
+  - partPath: eye/optical_nerv/nerv_element_3
+    closedPosition: {x: 11.141169, y: -103.79452, z: -0.56785625}
+    openPosition: {x: 116.69696, y: -103.79452, z: -0.56785625}
+  - partPath: eye/optical_nerv/nerv_element_4
+    closedPosition: {x: -3.9371824, y: -162.93535, z: 3.6486044}
+    openPosition: {x: -3.9371824, y: -162.93535, z: 23.896215}
+  - partPath: eye/optical_nerv/vein_retina_inside_1
+    closedPosition: {x: 78.729324, y: 124.9696, z: 70.1622}
+    openPosition: {x: 137.08276, y: 124.9696, z: 186.55719}
+  - partPath: eye/vein_down
+    closedPosition: {x: -80.596214, y: -26.140484, z: 128.73125}
+    openPosition: {x: -180.6347, y: -26.140484, z: 295.1654}
+  - partPath: eye/vein_up
+    closedPosition: {x: -70.24715, y: 7.8707695, z: -166.33243}
+    openPosition: {x: -221.88625, y: 7.8707695, z: -286.2369}

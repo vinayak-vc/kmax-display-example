@@ -1,0 +1,20 @@
+{
+	"name": "KmaxXR.Core.Samples",
+	"rootNamespace": "KmaxXR",
+	"references": [
+		"KmaxXR.Core",
+		"Kmax.InputModule",
+		"UnityEngine.UI"
+	],
+	"includePlatforms": [],
+	"excludePlatforms": [],
+	"allowUnsafeCode": false,
+	"overrideReferences": false,
+	"precompiledReferences": [],
+	"autoReferenced": false,
+	"defineConstraints": [
+		"!KMAX_AIO_K1"
+	],
+	"versionDefines": [],
+	"noEngineReferences": false
+}

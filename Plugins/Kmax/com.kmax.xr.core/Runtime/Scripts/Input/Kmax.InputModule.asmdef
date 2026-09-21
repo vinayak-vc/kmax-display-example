@@ -1,0 +1,6 @@
+﻿{
+	"name": "Kmax.InputModule",
+	"defineConstraints": [
+		"!KMAX_AIO_K1"
+	]
+}
