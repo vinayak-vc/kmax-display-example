@@ -290,7 +290,7 @@ namespace ViitorCloud.KmaxDisplayExample {
                 return;
             }
 
-            if (IsPointerOverUI()) {
+            if (IsPointerOverUI() || Input.GetMouseButton(1)) {
                 return;
             }
 
@@ -367,7 +367,7 @@ namespace ViitorCloud.KmaxDisplayExample {
                 foreach (KmaxPointer pointer in KmaxPointer.Pointers) {
                     position = pointer.ScreenPosition;
                     primaryHeld = pointer.GetButton(0);
-                    secondaryHeld = pointer.GetButton(1) || pointer.GetButton(2);
+                    secondaryHeld = false;
                     return true;
                 }
             }
@@ -375,7 +375,7 @@ namespace ViitorCloud.KmaxDisplayExample {
             if (Input.mousePresent) {
                 position = Input.mousePosition;
                 primaryHeld = Input.GetMouseButton(0);
-                secondaryHeld = Input.GetMouseButton(1) || Input.GetMouseButton(2);
+                secondaryHeld = false;
                 return true;
             }
 

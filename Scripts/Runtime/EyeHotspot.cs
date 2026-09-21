@@ -72,7 +72,11 @@ namespace ViitorCloud.KmaxDisplayExample {
             }
 
             _propertyBlock = new MaterialPropertyBlock();
-            _targetCamera = Camera.main;
+            _targetCamera = ResolveCamera();
+
+            if (visualRoot != null) {
+                visualRoot.rotation = _targetCamera != null ? _targetCamera.transform.rotation : Quaternion.identity;
+            }
 
             RefreshVisualsImmediate();
         }
@@ -82,13 +86,17 @@ namespace ViitorCloud.KmaxDisplayExample {
             UpdateAnimation();
         }
 
-        public void Initialize(int index) {
+        public void Initialize(int index, Camera camera = null) {
             _partIndex = index;
+            if (camera != null) {
+                _targetCamera = camera;
+            }
 
             if (numberText != null) {
                 numberText.text = (index + 1).ToString();
             }
 
+            UpdateBillboarding();
             RefreshVisualsImmediate();
         }
 
@@ -112,15 +120,33 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         private void UpdateBillboarding() {
-            if (_targetCamera == null) {
-                _targetCamera = Camera.main;
-                if (_targetCamera == null) {
-                    return;
+            if (_targetCamera == null || !_targetCamera.isActiveAndEnabled) {
+                _targetCamera = ResolveCamera();
+            }
+
+            if (visualRoot != null) {
+                if (_targetCamera != null) {
+                    visualRoot.rotation = _targetCamera.transform.rotation;
+                } else {
+                    visualRoot.rotation = Quaternion.identity;
+                }
+            }
+        }
+
+        private Camera ResolveCamera() {
+            Camera main = Camera.main;
+            if (main != null && main.isActiveAndEnabled) {
+                return main;
+            }
+
+            Camera[] all = Camera.allCameras;
+            for (int i = 0; i < all.Length; i++) {
+                if (all[i] != null && all[i].isActiveAndEnabled) {
+                    return all[i];
                 }
             }
 
-            // Always face the camera directly so the badge and number are crisp and readable
-            visualRoot.rotation = _targetCamera.transform.rotation;
+            return null;
         }
 
         private void UpdateAnimation() {

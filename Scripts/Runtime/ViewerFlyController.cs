@@ -19,8 +19,8 @@ namespace ViitorCloud.KmaxDisplayExample {
         private EyeManipulator eyeManipulator;
         [SerializeField, Tooltip("Main exhibit controller to notify on reset.")]
         private EyeAnatomyController exhibitController;
-        [SerializeField, Tooltip("Enable scene-view flying for the XRRig. Kept disabled by default to preserve the Kmax stereoscopic display screen window and prevent losing the model.")]
-        private bool enableFly = false;
+        [SerializeField, Tooltip("Enable scene-view flying for the XRRig.")]
+        private bool enableFly = true;
 
         [Header("Speeds")]
         [SerializeField, Tooltip("Metres per second.")] private float moveSpeed = 0.25f;
@@ -63,14 +63,12 @@ namespace ViitorCloud.KmaxDisplayExample {
 
         private void Update() {
             if (Input.GetKeyDown(resetKey)) {
+                ResetView();
+
                 if (exhibitController != null) {
                     exhibitController.ResetToHome();
-                } else {
-                    ResetView();
-
-                    if (eyeManipulator != null) {
-                        eyeManipulator.ResetTransform(true);
-                    }
+                } else if (eyeManipulator != null) {
+                    eyeManipulator.ResetTransform(true);
                 }
 
                 return;
@@ -84,14 +82,22 @@ namespace ViitorCloud.KmaxDisplayExample {
             Vector3 mouseDelta = mousePosition - lastMousePosition;
             lastMousePosition = mousePosition;
 
+            if (Input.GetMouseButtonDown(1)) {
+                CaptureAngles();
+            }
+
+            if (Input.GetMouseButtonDown(2)) {
+                lastMousePosition = Input.mousePosition;
+            }
+
             if (Input.GetMouseButton(1)) {
                 Look(mouseDelta);
-                Move();
+                Dolly();
             } else if (Input.GetMouseButton(2)) {
                 Pan(mouseDelta);
             }
 
-            Dolly();
+            Move();
         }
 
         /// <summary>

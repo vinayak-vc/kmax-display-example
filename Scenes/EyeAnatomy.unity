@@ -701,6 +701,7 @@ MonoBehaviour:
   backButton: {fileID: 1357595953}
   resetButton: {fileID: 1467720540}
   manipulator: {fileID: 587192533}
+  flyController: {fileID: 587192532}
   particles: {fileID: 649347777}
   expandLabel: Expand eye
   collapseLabel: Close eye
@@ -773,7 +774,7 @@ MonoBehaviour:
   rigRoot: {fileID: 1586624684}
   eyeManipulator: {fileID: 587192533}
   exhibitController: {fileID: 587192528}
-  enableFly: 0
+  enableFly: 1
   moveSpeed: 0.25
   boostMultiplier: 3
   lookSensitivity: 0.15
@@ -1048,6 +1049,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: KmaxDisplayExample::ViitorCloud.KmaxDisplayExample.AnatomyParticleDirector
   ambientField: {fileID: 1909089664}
   focusBurst: {fileID: 1235187201}
+  burstParticleCount: 45
 --- !u!4 &649347778
 Transform:
   m_ObjectHideFlags: 0
@@ -2403,7 +2405,7 @@ ParticleSystem:
           m_PostInfinity: 2
           m_RotationOrder: 4
       cycleCount: 1
-      repeatInterval: 0.0001
+      repeatInterval: 0.01
       probability: 1
   SizeModule:
     enabled: 1

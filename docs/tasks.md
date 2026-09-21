@@ -1,6 +1,34 @@
 # Tasks
 
-## Session 5 (2026-09-21) - numbered interaction badges, selection particles, and living 3D display
+## Session 6 (2026-09-21) - fly camera controls and upright hotspot billboarding
+
+Resolved camera flight controls with mouse and keyboard, and fixed numbered interaction badges so they always billboard upright facing the camera rather than facing downwards.
+
+### Fixed & Improved
+
+- **Upright Hotspot Billboarding**:
+  - Diagnosed that `Camera.main` returned `null` because the root `Camera` object on `XRRig` is disabled by the Kmax SDK in favour of the active rendering camera `left`.
+  - Because `_targetCamera` was null, `visualRoot.rotation` was never updated, causing badges to inherit their parent GLB bone/mesh pitch rotation of ~90° (`worldEuler ≈ (89.98, 180, 0)`), lying flat horizontally facing downwards towards the floor.
+  - Added robust dynamic camera resolver `ResolveCamera()` in `EyeHotspot.cs` and `EyeAnatomyController.cs` that queries `Camera.main` and falls back to active/enabled cameras in `Camera.allCameras` (resolving `left`).
+  - Added default fallback `visualRoot.rotation = Quaternion.identity` in `Awake()` and billboarding so markers never inherit parent bone tilt.
+  - Verified in Play Mode: all 18 numbered badges billboard perfectly upright (`facingDot = 1.000`, `upDot = 1.000`) directly facing the camera.
+- **Mouse & Keyboard Fly Camera**:
+  - Enabled `ViewerFlyController` by default (`enableFly = true` in script and serialized `enableFly: 1` in `EyeAnatomy.unity`).
+  - Unchained `Move()` in `ViewerFlyController.cs` so WASD and Q/E continuously fly the camera rig through 3D space whether right-click is held or not.
+  - Added Left Shift key boost for 3x flying speed.
+  - Added `CaptureAngles()` synchronization on `Input.GetMouseButtonDown(1)` and mouse position reset on `GetMouseButtonDown(2)` to eliminate look/pan angle jumps.
+  - Separated mouse inputs: removed right-click and middle-click capture from `EyeManipulator.cs` so right-click is exclusively for fly-look and middle-click for fly-pan, while left-click remains dedicated to turntable model orbit.
+  - Mapped scroll wheel dolly to right-click hold, preventing conflict with model zoom.
+  - Connected `ViewerFlyController.ResetView()` into `EyeAnatomyController.ResetToHome()` so clicking "Reset View" or pressing 'R' restores both the camera rig and the model to their authored poses.
+
+### Verified in Play Mode
+
+- Expanding the eye shows all 18 numbered badges upright facing the camera with 1.000 alignment.
+- WASD and Q/E fly the camera in 3D space; Left Shift boosts speed 3x.
+- Right-click drag smoothly pitches and yaws the camera.
+- Left-click drag orbits the model around its visual center.
+- Resetting via 'R' or the "Reset View" button smoothly restores both camera and model to default home state.
+- Console completely clean with 0 errors.
 
 Replaced cyan plastic spheres with subtle numbered badges (1 to 18), added interaction particle bursts, and brought the 3D stereoscopic display alive.
 

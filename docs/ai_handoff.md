@@ -4,16 +4,22 @@
 
 `Scenes/EyeAnatomy.unity` is a working interactive exhibit on the Kmax stereo
 rig: the eye loads assembled and centered at `(0, 0, 0)`, a button explodes it,
-18 numbered badges (1 to 18) appear, and clicking one triggers a radiant particle
-burst and frames that part on its own with a name and a short description. Over 220
-ambient motes float in 3D stereoscopic depth, and the badges gently breathe to give
-the display an organic living presence.
+18 numbered badges (1 to 18) appear perfectly billboarded facing the viewer, and
+clicking one triggers a radiant particle burst and frames that part on its own with
+a name and a short description. Over 220 ambient motes float in 3D stereoscopic depth,
+and the badges gently breathe to give the display an organic living presence.
 
-Turntable orbit manipulation (`EyeManipulator.cs`) rotates the model around its
-globe center in overview, or around the focused part's center when a part is in
-focus, with pitch clamping (`[-75°, +75°]`) to prevent flipping upside down.
-A dedicated "Reset View" UI button and the 'R' key smoothly animate the model
-back to the forward-facing overview orientation.
+Navigation controls:
+- **Turntable model orbit**: Left-click drag on the model rotates around the eyeball
+  globe center in overview, or around the focused part's center when a part is in focus,
+  with pitch clamping (`[-75°, +75°]`) to prevent flipping upside down.
+- **Fly camera**: Enabled via `ViewerFlyController.cs`. Right-click drag to look around
+  (pitch/yaw), WASD to translate (forward/back/strafe), Q/E to rise/sink, Left Shift
+  to boost speed 3x, and middle-click drag to pan the camera rig.
+- **Zoom / Dolly**: Scroll wheel zooms the model; holding right-click while scrolling
+  dollys the camera rig.
+- **Unified reset**: A dedicated "Reset View" UI button and the 'R' key smoothly animate
+  both the model and the fly camera rig back to their forward-facing default state.
 
 Active SDK backend: **Kmax XR Core 2.5.2** (`KMAX_AIO_K1` undefined).
 Render pipeline: **URP**, via `URPAssets/URPAsset.asset`.

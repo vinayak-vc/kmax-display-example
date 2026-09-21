@@ -19,6 +19,7 @@ namespace ViitorCloud.KmaxDisplayExample {
         [SerializeField] private Button backButton;
         [SerializeField] private Button resetButton;
         [SerializeField] private EyeManipulator manipulator;
+        [SerializeField] private ViewerFlyController flyController;
         [SerializeField, Tooltip("Optional. Plays a burst when a part is selected.")]
         private AnatomyParticleDirector particles;
         [SerializeField] private string expandLabel = "Expand eye";
@@ -55,6 +56,10 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             if (manipulator == null) {
                 manipulator = GetComponent<EyeManipulator>();
+            }
+
+            if (flyController == null) {
+                flyController = GetComponent<ViewerFlyController>();
             }
 
             explodeView.SetExpansionImmediate(0f);
@@ -104,6 +109,10 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             if (manipulator != null) {
                 manipulator.ResetTransform(true);
+            }
+
+            if (flyController != null) {
+                flyController.ResetView();
             }
         }
 
@@ -175,6 +184,7 @@ namespace ViitorCloud.KmaxDisplayExample {
             partTransforms = new Transform[definitions.Length];
             partDefinitions = new EyePartDefinition[definitions.Length];
             partCount = 0;
+            Camera activeCamera = ResolveActiveCamera();
 
             for (int i = 0; i < definitions.Length; i++) {
                 Transform part = modelRoot.Find(definitions[i].PartPath);
@@ -203,7 +213,7 @@ namespace ViitorCloud.KmaxDisplayExample {
                     hotspot.transform.localScale = Vector3.one * (hotspotWorldRadius * 2f / parentScale);
                 }
 
-                hotspot.Initialize(partCount);
+                hotspot.Initialize(partCount, activeCamera);
                 hotspot.Clicked += OnHotspotClicked;
 
                 hotspots[partCount] = hotspot;
@@ -215,6 +225,22 @@ namespace ViitorCloud.KmaxDisplayExample {
             if (partCount == 0) {
                 Debug.LogError($"{nameof(EyeAnatomyController)} built no hotspots; check the catalog's part paths.", this);
             }
+        }
+
+        private Camera ResolveActiveCamera() {
+            Camera main = Camera.main;
+            if (main != null && main.isActiveAndEnabled) {
+                return main;
+            }
+
+            Camera[] all = Camera.allCameras;
+            for (int i = 0; i < all.Length; i++) {
+                if (all[i] != null && all[i].isActiveAndEnabled) {
+                    return all[i];
+                }
+            }
+
+            return null;
         }
 
         private void SetHotspotsVisible(bool visible) {
