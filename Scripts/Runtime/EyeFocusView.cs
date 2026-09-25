@@ -34,6 +34,17 @@ namespace ViitorCloud.KmaxDisplayExample {
         [SerializeField, Tooltip("Applied to every part except the focused one while focused.")]
         private Material ghostMaterial;
 
+        [Header("Transparent Part Rescue")]
+        [SerializeField, Tooltip("Swap a focused part onto an opaque material when its own material is " +
+            "too transparent to read. Lens and Tear film share the model's Mat.1 - a 91% grey at 58% " +
+            "alpha - and against any background they are nearly invisible however the scene is lit.")]
+        private bool highlightTransparentFocus = true;
+        [SerializeField, Range(0f, 1f), Tooltip("A part whose every material is below this alpha gets " +
+            "the highlight. 1 would rescue every part, 0 none.")]
+        private float transparentAlphaThreshold = 0.75f;
+        [SerializeField, Tooltip("Opaque stand-in used for the rescue. Left empty, nothing is swapped.")]
+        private Material focusHighlightMaterial;
+
         [SerializeField, Tooltip("View size used outside play mode, when the XRRig has not initialised.")]
         private Vector2 fallbackViewSize = new Vector2(0.3454f, 0.1943f);
 
@@ -169,7 +180,7 @@ namespace ViitorCloud.KmaxDisplayExample {
         /// Fades every part except the given one, or restores all of them when passed null.
         /// </summary>
         private void SetFadedExcept(Transform part) {
-            if (modelRenderers == null || ghostMaterial == null) {
+            if (modelRenderers == null) {
                 return;
             }
 
@@ -181,18 +192,80 @@ namespace ViitorCloud.KmaxDisplayExample {
 
                 bool keepOpaque = part == null || renderer.transform.IsChildOf(part);
                 if (keepOpaque) {
+                    // Always restore first, so a part rescued last time goes back to its own look
+                    // when it stops being the focus.
                     renderer.sharedMaterials = originalMaterials[i];
+
+                    if (part != null && NeedsHighlight(originalMaterials[i])) {
+                        renderer.sharedMaterials = Fill(focusHighlightMaterial, originalMaterials[i].Length);
+                    }
+
                     continue;
                 }
 
-                Material[] ghosts = new Material[originalMaterials[i].Length];
-                for (int m = 0; m < ghosts.Length; m++) {
-                    ghosts[m] = ghostMaterial;
+                if (ghostMaterial != null) {
+                    renderer.sharedMaterials = Fill(ghostMaterial, originalMaterials[i].Length);
                 }
-
-                renderer.sharedMaterials = ghosts;
             }
         }
+
+        private static Material[] Fill(Material material, int count) {
+            Material[] result = new Material[count];
+            for (int i = 0; i < count; i++) {
+                result[i] = material;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// True when every material on a part is too see-through to read on its own.
+        ///
+        /// Deliberately "every" rather than "any": a part built from one solid mesh and one glassy
+        /// one already reads through the solid mesh, and replacing both would throw away more of the
+        /// source art than the problem justifies.
+        /// </summary>
+        private bool NeedsHighlight(Material[] materials) {
+            if (!highlightTransparentFocus || focusHighlightMaterial == null || materials == null || materials.Length == 0) {
+                return false;
+            }
+
+            for (int i = 0; i < materials.Length; i++) {
+                if (materials[i] == null) {
+                    return false;
+                }
+
+                if (GetAlpha(materials[i]) >= transparentAlphaThreshold) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Reads a material's base alpha. The model's materials come from glTFast, which names the
+        /// property <c>baseColorFactor</c> rather than either of URP's two spellings.
+        /// </summary>
+        private static float GetAlpha(Material material) {
+            if (material.HasProperty(BaseColorFactorId)) {
+                return material.GetColor(BaseColorFactorId).a;
+            }
+
+            if (material.HasProperty(BaseColorId)) {
+                return material.GetColor(BaseColorId).a;
+            }
+
+            if (material.HasProperty(ColorId)) {
+                return material.GetColor(ColorId).a;
+            }
+
+            return 1f;
+        }
+
+        private static readonly int BaseColorFactorId = Shader.PropertyToID("baseColorFactor");
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        private static readonly int ColorId = Shader.PropertyToID("_Color");
 
         private void CacheRenderers() {
             // Runs before the controller spawns hotspots, so this is purely the model's own meshes.

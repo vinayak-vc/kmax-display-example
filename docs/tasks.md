@@ -1,5 +1,233 @@
 # Tasks
 
+## Session 12 (2026-09-25) - the other half of the lighting bug
+
+Session 11 made the lights work; the result was ugly. One side blown to flat
+white, the other crushed. Measured: **26.4% of the subject clipped above 0.97**.
+
+### Two causes
+
+- **The specular point light.** 0.13 m off-axis from a model about 0.1 m across,
+  so inverse-square falloff made it a blowtorch on the near side. Disabling it
+  alone took clipping from **26.4% to 0.1%**. It is kept in the scene disabled -
+  a directional already gives a specular that slides as the camera orbits,
+  because specular is view-dependent.
+- **No tonemapper, for a reason session 11 got wrong.** With the point light
+  gone the rig had to run so dark everything read muddy. Session 11 had tried a
+  tonemapping `Volume`, seen no change, and concluded the SDK's stereo path
+  could not be tonemapped. The real cause: **`VRRenderer` creates the `left` and
+  `right` cameras at runtime without a `UniversalAdditionalCameraData`**, so URP
+  defaults them to `renderPostProcessing = false` and they skip every volume.
+  Setting it on the authored root camera does nothing either, because the SDK
+  disables that camera's own `Camera` component.
+
+`ExhibitPostProcessing` now adds the component and enables post-processing and
+HDR on the sub-cameras once they exist. HDR matters as much as the flag - without
+an HDR buffer, values clip before the tonemapper sees them.
+
+### Result
+
+Neutral tonemapping plus gentle bloom, and the rig back at normal exposure:
+key 1.05, fill 0.50, rim 0.60, ambient 0.55, key:fill near 2:1. Measures
+**0.00% clipped** with a subject mean of 0.37, against 26.4% clipped before.
+
+The exploded view now reads properly - shaded sclera shells, warm interior,
+vivid retinal vessels - and the rescued lens reads as a glassy body with a soft
+halo rather than a flat sticker. Full pass over all 18 parts, both navigator
+directions, reset and every audio cue with a clean console.
+
+## Session 11 (2026-09-25) - the renderer was 2D, so nothing was ever lit
+
+Prompted by "I think directional light has no effect on model". It does not, and
+the cause turned out to be the largest single issue in this repo.
+
+### Measured, not argued
+
+Rendered the camera to a texture with every light on, then every light off.
+Mean luminance was **identical to four decimal places - 0.3247 both ways** - and
+the same for each light individually. Validated the instrument by swapping the
+background colour, which moved it 0.0461 -> 0.9535. Dropped a stock URP Lit
+sphere into the scene: it rendered as a **flat white disc with no terminator**,
+ruling out the model's materials.
+
+`URPAsset`'s `m_RendererDataList[0]` was a **`Renderer2DData`**. URP's 2D
+renderer only handles `Light2D`; every directional and point light in the scene
+was being discarded. The exhibit had been rendering as albedo times ambient.
+
+Replaced it with a `UniversalRendererData`. The same measurement now gives a
+delta of 0.0443 and the probe sphere shades correctly.
+
+### What that invalidated
+
+- **The lens diagnosis from session 10 was half right.** It was flat, and the
+  geometry reading - a biconvex disc seen down its own axis - was accurate, but
+  that was never the binding constraint. The lights were simply not applied.
+  With the renderer fixed the lens shades properly and now reads as a glassy
+  body with a real terminator. The translucent stand-in is kept; it looks right
+  and stays closer to the source art.
+- **Every light value in the scene was uncalibrated**, because raising a light
+  had never done anything. Once lighting applied, the existing intensities blew
+  the model out to solid white. Rebalanced to roughly a third of the previous
+  total: key 0.24, fill 0.07, rim 0.13, specular point 0.12, ambient 0.24, with
+  the front fill disabled outright. Budget the whole rig to about 0.7 total -
+  the albedo is near-white and URP clips past 1.0.
+- **Post-processing does not help.** Enabled HDR, assigned the missing
+  `PostProcessData`, opted the stereo cameras in and added a global `Volume`
+  with Neutral tonemapping. It changed nothing on the SDK's stereo path, so the
+  volume was removed rather than left implying it works.
+- **decisions.md's "custom shaders draw nothing" note is now suspect** and has
+  been flagged in place. A 3D lit SubShader under the 2D renderer would produce
+  exactly that symptom.
+
+`EyeAnatomySceneUpgrader.UpgradeRenderPipeline` now checks the pipeline on every
+run and swaps the renderer back if it regresses.
+
+### Verified
+
+Full pass over all 18 parts, both navigator directions, reset and every audio
+cue with a clean console. One stylus pointer, ~825 motes across four layers,
+interface drawing over the anatomy, and the Lens showing genuine 3D form.
+
+## Session 10 (2026-09-25) - first Play-mode pass, with the Editor driven over MCP
+
+The Unity MCP bridge became available this session, so for the first time the
+work could be run and looked at rather than only compiled.
+
+### What the running scene showed
+
+Session 9's output was all present and working: audio looping, 725 motes across
+three layers, all five buttons carrying `UiButtonMotion`, 18 badges with their
+haloes, `AnatomyStylusInput` live. Two things were wrong, and one prediction in
+the docs turned out to be false.
+
+- **Two pens.** The SDK's `pen.prefab` had also been added to the rig, so two
+  `KmaxStylus` instances were registered under pointer id 1000 and
+  `KmaxInputModule` - which iterates every registered pointer - dispatched every
+  press twice from two different poses. It was also throwing a
+  `NullReferenceException` at `KmaxStylus.UpdateState` line 280 on every
+  `EventSystem.Update`, because the second stylus had no resolved `IStylus`.
+  The setup command now removes any stylus that is not `AnatomyPen`, and the
+  console is clean afterwards.
+- **The info panel was cut off** by any structure scaled up in front of it. The
+  cause is geometric: `UIScaler` pins the canvas to the rig's screen plane,
+  always 0.5 m from the viewer, while the camera orbits 0.42 m from the model.
+- **Correction:** session 9 predicted the model's meshes were not marked
+  Read/Write and that colliders would fall back to boxes. Measured: **21 mesh
+  colliders, 0 fallbacks.** Picking is already per-triangle. The docs said
+  otherwise and have been fixed.
+
+### Lens and Tear film
+
+The brief said these were invisible and guessed the cause was missing
+environment reflections. Adding an environment did not fix them, and making the
+background grey made them *worse* - a 58%-alpha grey over grey has no contrast
+at all. The alpha is the problem, so `EyeFocusView` now swaps any part whose
+materials are all under 0.75 alpha onto `Materials/FocusHighlight.mat`.
+
+Getting that material right took measuring rather than guessing. An opaque
+version was visible but read as a flat pale sticker, and neither lowering
+ambient, re-aiming the lights, raising smoothness nor hiding the ghost shells
+produced a terminator on it. Dumping the mesh settled it: 2345 normals spanning
+175 degrees, so the geometry was never the limitation - the lens is a biconvex
+disc seen down its own axis, where almost every visible normal points at the
+camera. High smoothness made it worse, because a near-mirror reflecting a nearly
+uniform grey sky returns the same value at every normal. A translucent stand-in
+reads correctly and stays closer to the source art.
+
+### Also changed
+
+- Grey background at `RGB(0.165, 0.175, 0.205)`, kept dark because a focused
+  part is seen through ~20 ghost shells that otherwise accumulate into haze.
+- A grey gradient skybox for ambient and reflections that is never rendered, so
+  the wet surfaces have something to reflect without raising stereo crosstalk.
+- `Front Fill` and `Specular Point` added; ambient dropped to 0.42 and the
+  ghosts to 0.028 alpha. The fill is faint and off-axis on purpose - the first
+  version aimed it down the view axis and flattened everything facing the viewer.
+- Button lift on hover and a press flash, on top of the existing punch.
+- A fourth `MoteField_Foreground` layer well in front of the display: sparse and
+  large, it contributes more parallax per particle than anything at model depth.
+
+### Verified on screen
+
+Interface drawing over the anatomy with the panel's full text readable, the Lens
+clearly legible, navigator and counter working, ~800 motes across four layers,
+and burst, ring and sparks all firing on selection. The pad loops and a
+selection cue reaches the one-shot source.
+
+**Not verified:** anything requiring a tracked pen. `KmaxStylus.Visible` is
+false without hardware, so the beam, the tip and all three buttons are still
+unexercised.
+
+One gotcha worth knowing: driving the Editor headlessly leaves it unfocused, so
+frames do not tick, `Time.deltaTime` reads 0 and animated transitions stall
+part-way. That is remote driving, not a bug.
+
+## Session 9 (2026-09-25) - the stylus, the navigator, audio and depth
+
+### Diagnosed first
+
+The brief opened with "stylus drag rotation is not working". It was not a
+tuning problem. Searching `EyeAnatomy.unity` for the GUIDs of `KmaxStylus`,
+`PenTracker` and `StylusRay` returned **zero hits in all three cases**, and
+`XRRig.prefab` turned out to contain only `Camera`, `left` and `right` - the
+SDK's `pen.prefab` was never instanced. The `EventSystem` was also running a
+stock `StandaloneInputModule`, not `KmaxInputModule`.
+
+The user confirmed on device that UI buttons *are* clickable with the pen, which
+fits: the Kmax driver moves the OS cursor, and a cursor plus
+`StandaloneInputModule` is enough to press a button but never produces a 3D
+pointer. `ViewerFlyController.UpdateMouseOrbit` reads `Input.GetMouseButton`,
+which that emulation does not reliably set - hence no orbit, no beam, nothing to
+raycast. decisions.md records the full diagnosis; architecture.md's claim that
+`XRRig/pen` existed has been corrected.
+
+### Built
+
+- **The stylus.** `XRRig/AnatomyPen` carrying `PenTracker` + `KmaxStylus`, with
+  `KmaxInputModule` swapped onto the `EventSystem` (it derives from
+  `StandaloneInputModule`, so the mouse path is untouched).
+- **`AnatomyStylusInput`** maps the pen's three buttons - the whole budget, read
+  as `IStylus.GetButton(0..2)`: front selects and orbits on a drag, rear taps to
+  reset, centre holds to push-pull dolly. Drag deltas come from a point
+  projected at a *fixed* distance along the ray, not from the hit point, which
+  would jump at every silhouette edge.
+- **`AnatomyStylusBeam`** replaces the SDK's `StylusRay`: a tapered
+  `LineRenderer` ending in a cone whose apex sits on the hit point and whose
+  body stands out along the surface normal, recolouring idle/hit/press, with a
+  haptic pulse on hit-enter.
+- **`EyePartColliders` + `EyePartPicker`** fit colliders to every catalogued
+  structure at build time and make the geometry itself selectable. Mesh
+  colliders where the mesh is readable, bounding boxes where it is not - the
+  glTFast import does not enable Read/Write, so today it is boxes and one
+  warning says so.
+- **Next / Back navigator** with a `n / 18` counter, stepping the catalog and
+  flying the camera to a viewpoint on each structure's own side of the eye.
+  `ViewerFlyController` gained `FlyTo`, `AddOrbitDelta` and `AddDollyDelta`, and
+  its reset was generalised into one eased flight that any input can interrupt.
+- **Badge motion**: staggered pop-in with overshoot, hover lift and scale, press
+  punch, and a selection halo pinging outward on a loop.
+- **`UiButtonMotion`** on every UGUI button - on a stereo panel scale is the only
+  hover cue that survives being looked at from an angle with two eyes.
+- **Particles**: near and far mote layers for genuine parallax depth, a popup
+  ring and rise sparks on selection, and a brief swell of the whole ambient
+  field so the volume acknowledges an interaction.
+- **Audio**: `ProceduralAudio` synthesises a seamless 16 s pad plus cues for
+  hover, select, navigate, back, expand, collapse and reset;
+  `AnatomyAudioDirector` plays them with ducking and an override slot each.
+- **`Kmax/Eye Anatomy/Set Up Interaction Upgrades`** authors all of the scene
+  side idempotently, because the alternative was hand-editing 12,000 lines of
+  YAML keyed by file IDs.
+
+### Verified
+
+Both assemblies compiled against the project's real Unity reference assemblies
+and `Library/ScriptAssemblies` - `KmaxDisplayExample` and
+`KmaxDisplayExample.Anatomy.Editor`, clean, no warnings.
+
+**Not verified:** nothing in this session has been run in Play mode or on
+hardware. The menu command has not been executed. ai_handoff.md lists the three
+settings most likely to need adjusting once it meets a real pen.
+
 ## Session 8 (2026-09-21) - badges persist while focused, ghost contrast, doc reconciliation
 
 ### Verified first, before changing anything

@@ -2,7 +2,13 @@
 	"name": "KmaxDisplayExample.Anatomy.Editor",
 	"rootNamespace": "ViitorCloud.KmaxDisplayExample.Editor",
 	"references": [
-		"KmaxDisplayExample"
+		"KmaxDisplayExample",
+		"KmaxXR.Core",
+		"Kmax.InputModule",
+		"UnityEngine.UI",
+		"Unity.TextMeshPro",
+		"Unity.RenderPipelines.Universal.Runtime",
+		"Unity.RenderPipelines.Core.Runtime"
 	],
 	"includePlatforms": [
 		"Editor"

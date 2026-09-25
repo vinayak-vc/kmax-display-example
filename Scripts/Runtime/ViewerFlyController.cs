@@ -81,11 +81,17 @@ namespace ViitorCloud.KmaxDisplayExample {
         private bool _isPointerDragging;
         private float _dragThreshold = 4f;
 
-        private bool _isAnimatedReset;
-        private float _resetElapsed;
-        private float _resetFromYaw;
-        private float _resetFromPitch;
-        private float _resetFromDistance;
+        // One animated flight serves both the reset to home and the fly-to used when a part is
+        // picked from the Next / Back buttons, so there is a single place that eases the camera.
+        private bool _isFlying;
+        private float _flightElapsed;
+        private float _flightDuration;
+        private float _flightFromYaw;
+        private float _flightFromPitch;
+        private float _flightFromDistance;
+        private float _flightToYaw;
+        private float _flightToPitch;
+        private float _flightToDistance;
 
         public Vector3 FocalCenter {
             get { return focalCenter; }
@@ -131,8 +137,14 @@ namespace ViitorCloud.KmaxDisplayExample {
                 return;
             }
 
-            if (_isAnimatedReset) {
-                UpdateAnimatedReset();
+            // Grabbing the view during a flight takes it over immediately. Without this, clicking
+            // Next twice in a row or reaching for the model mid-reset feels like a dead control.
+            if (_isFlying && WantsManualControl()) {
+                CancelFlight();
+            }
+
+            if (_isFlying) {
+                UpdateFlight();
             } else {
                 UpdateMouseOrbit();
                 UpdateKeyboardFlight();
@@ -161,30 +173,94 @@ namespace ViitorCloud.KmaxDisplayExample {
         /// Smoothly or immediately restores the camera rig to the authored home position and rotation.
         /// </summary>
         public void ResetView(bool animated = true) {
-            _targetYaw = 0f;
-            _targetPitch = 0f;
-            _targetDistance = defaultDistance;
             focalCenter = Vector3.zero;
+            FlyTo(0f, 0f, defaultDistance, animated);
+        }
+
+        /// <summary>
+        /// Eases the camera to an absolute orbit pose. Used by the reset and by the part navigator,
+        /// which picks an angle that shows the chosen structure rather than whatever the viewer
+        /// happened to be looking from.
+        /// </summary>
+        /// <param name="yaw">Target yaw in degrees.</param>
+        /// <param name="pitch">Target pitch in degrees, clamped to the configured limits.</param>
+        /// <param name="distance">Target distance from the focal centre in metres.</param>
+        /// <param name="animated">False snaps straight there.</param>
+        /// <param name="duration">Flight time in seconds. Negative uses the configured default.</param>
+        public void FlyTo(float yaw, float pitch, float distance, bool animated = true, float duration = -1f) {
+            pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+            distance = Mathf.Clamp(distance, minDistance, maxDistance);
+
+            _targetYaw = yaw;
+            _targetPitch = pitch;
+            _targetDistance = distance;
 
             _isPointerPressed = false;
             _isPointerDragging = false;
 
             if (animated) {
-                _isAnimatedReset = true;
-                _resetElapsed = 0f;
-                _resetFromYaw = _currentYaw;
-                _resetFromPitch = _currentPitch;
-                _resetFromDistance = _currentDistance;
+                _isFlying = true;
+                _flightElapsed = 0f;
+                _flightDuration = duration > 0f ? duration : resetDuration;
+                _flightFromYaw = _currentYaw;
+                _flightFromPitch = _currentPitch;
+                _flightFromDistance = _currentDistance;
+                _flightToYaw = yaw;
+                _flightToPitch = pitch;
+                _flightToDistance = distance;
             } else {
-                _isAnimatedReset = false;
-                _currentYaw = 0f;
-                _currentPitch = 0f;
-                _currentDistance = defaultDistance;
+                _isFlying = false;
+                _currentYaw = yaw;
+                _currentPitch = pitch;
+                _currentDistance = distance;
                 _yawVelocity = 0f;
                 _pitchVelocity = 0f;
                 _distanceVelocity = 0f;
                 UpdateRigTransformImmediate();
             }
+        }
+
+        /// <summary>
+        /// Orbits by a relative amount from an external input source - the stylus drag.
+        /// Any flight in progress yields immediately, because the viewer taking hold of the view
+        /// should never have to wait for an animation to finish.
+        /// </summary>
+        public void AddOrbitDelta(float yawDegrees, float pitchDegrees) {
+            if (!enableFly) {
+                return;
+            }
+
+            CancelFlight();
+            _targetYaw += yawDegrees;
+            _targetPitch = Mathf.Clamp(_targetPitch + pitchDegrees, minPitch, maxPitch);
+        }
+
+        /// <summary>
+        /// Dollies by a relative amount from an external input source. Positive moves closer,
+        /// matching a pen pushed towards the display.
+        /// </summary>
+        public void AddDollyDelta(float metres) {
+            if (!enableFly) {
+                return;
+            }
+
+            CancelFlight();
+            _targetDistance = Mathf.Clamp(_targetDistance - metres, minDistance, maxDistance);
+        }
+
+        /// <summary>
+        /// Drops out of an animated flight and hands control back to the smoothed targets from
+        /// wherever the camera currently is, so there is no snap.
+        /// </summary>
+        private void CancelFlight() {
+            if (!_isFlying) {
+                return;
+            }
+
+            _isFlying = false;
+            _targetYaw = _currentYaw;
+            _targetPitch = _currentPitch;
+            _targetDistance = _currentDistance;
         }
 
         private void UpdateMouseOrbit() {
@@ -284,31 +360,35 @@ namespace ViitorCloud.KmaxDisplayExample {
             _currentDistance = Mathf.SmoothDamp(_currentDistance, _targetDistance, ref _distanceVelocity, dollySmoothTime, Mathf.Infinity, dt);
         }
 
-        private void UpdateAnimatedReset() {
-            _resetElapsed += Time.deltaTime;
-            float t = Mathf.Clamp01(_resetElapsed / resetDuration);
+        private void UpdateFlight() {
+            _flightElapsed += Time.deltaTime;
+            float t = _flightDuration > 0f ? Mathf.Clamp01(_flightElapsed / _flightDuration) : 1f;
             float eased = Mathf.SmoothStep(0f, 1f, t);
 
-            _currentYaw = Mathf.Lerp(_resetFromYaw, 0f, eased);
-            _currentPitch = Mathf.Lerp(_resetFromPitch, 0f, eased);
-            _currentDistance = Mathf.Lerp(_resetFromDistance, defaultDistance, eased);
+            // Yaw is interpolated the short way round, so flying from 350 to 10 degrees crosses
+            // zero rather than sweeping the long way back through the whole model.
+            _currentYaw = Mathf.LerpAngle(_flightFromYaw, _flightToYaw, eased);
+            _currentPitch = Mathf.Lerp(_flightFromPitch, _flightToPitch, eased);
+            _currentDistance = Mathf.Lerp(_flightFromDistance, _flightToDistance, eased);
 
             _targetYaw = _currentYaw;
             _targetPitch = _currentPitch;
             _targetDistance = _currentDistance;
 
-            if (t >= 1f) {
-                _isAnimatedReset = false;
-                _currentYaw = 0f;
-                _currentPitch = 0f;
-                _currentDistance = defaultDistance;
-                _targetYaw = 0f;
-                _targetPitch = 0f;
-                _targetDistance = defaultDistance;
-                _yawVelocity = 0f;
-                _pitchVelocity = 0f;
-                _distanceVelocity = 0f;
+            if (t < 1f) {
+                return;
             }
+
+            _isFlying = false;
+            _currentYaw = _flightToYaw;
+            _currentPitch = _flightToPitch;
+            _currentDistance = _flightToDistance;
+            _targetYaw = _flightToYaw;
+            _targetPitch = _flightToPitch;
+            _targetDistance = _flightToDistance;
+            _yawVelocity = 0f;
+            _pitchVelocity = 0f;
+            _distanceVelocity = 0f;
         }
 
         private void ApplyRigTransform() {
@@ -329,6 +409,28 @@ namespace ViitorCloud.KmaxDisplayExample {
             Quaternion rot = Quaternion.Euler(_currentPitch, _currentYaw, 0f);
             Vector3 pos = focalCenter + rot * new Vector3(0f, 0f, 0.5f - _currentDistance);
             rigRoot.SetPositionAndRotation(pos, rot);
+        }
+
+        /// <summary>
+        /// True when the viewer is reaching for the view with the mouse, the wheel or the flight
+        /// keys, which should take precedence over any flight still playing out.
+        ///
+        /// The stylus does not need checking here: its input arrives through
+        /// <see cref="AddOrbitDelta"/> and <see cref="AddDollyDelta"/>, which cancel the flight
+        /// themselves.
+        /// </summary>
+        private bool WantsManualControl() {
+            if (Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1) ||
+                !Mathf.Approximately(Input.mouseScrollDelta.y, 0f)) {
+                // A press on a button is aimed at that button, not at the view behind it.
+                return !IsPointerOverUI();
+            }
+
+            return Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.S) ||
+                Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.D) ||
+                Input.GetKey(KeyCode.Q) || Input.GetKey(KeyCode.E) ||
+                Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.DownArrow) ||
+                Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.RightArrow);
         }
 
         private bool IsPointerOverUI() {

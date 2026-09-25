@@ -15,9 +15,42 @@
 - [x] Closed-by-default eye, expand button, 18 clickable hotspots, per-part
       framing with a name and description panel.
 - [x] Exercise the whole flow in Play mode.
+- [x] **Put a stylus in the scene at all** - `XRRig/AnatomyPen` with
+      `PenTracker` + `KmaxStylus`, and `KmaxInputModule` on the `EventSystem`.
+      There was none; see decisions.md.
+- [x] Stylus beam: tapered `LineRenderer` ending in a pointed cone aligned to
+      the surface normal, recolouring on hit, with haptics.
+- [x] Colliders on the model, so the beam lands on the eye and each structure is
+      directly selectable.
+- [x] Map the pen's three buttons: select/orbit, reset, push-pull dolly.
+- [x] Next / Back structure navigator with camera flight to each part.
+- [x] Badge pop-in, hover lift, press punch and selection halo.
+- [x] Near and far mote layers, popup ring and rise sparks.
+- [x] Synthesised ambient pad and one cue per interaction, each overridable.
+- [x] `Kmax/Eye Anatomy/Set Up Interaction Upgrades` to author all of the above.
+
+- [x] **Fix the render pipeline**: it was using URP's 2D renderer, which discards
+      every 3D light, so the exhibit rendered unlit. Swapped to a
+      `UniversalRendererData` and rebalanced the whole light rig against it.
+- [x] **Get post-processing running on the stereo cameras.** `VRRenderer` creates
+      them without a `UniversalAdditionalCameraData`, so they skipped every
+      volume. With Neutral tonemapping and bloom the rig runs at a normal
+      exposure and clipping went from 26.4% to 0.00%.
+- [x] Run the setup command and exercise the whole flow in Play mode.
+- [x] Remove the duplicate stylus that made every press dispatch twice.
+- [x] Take the interface out of the depth test so the anatomy cannot cover it.
+- [x] Make `Lens` and `Tear film` readable when focused.
+- [x] Grey background, an invisible gradient sky for ambient and reflections,
+      and two more lights.
+- [x] Button lift, press punch and press flash.
+- [x] A fourth, foreground mote layer for stronger parallax.
 
 ## Next
 
+- [ ] **Exercise the stylus on Kmax hardware.** The scene side is verified, but
+      `KmaxStylus.Visible` is false without a tracked pen, so the beam, the tip
+      and all three buttons remain unexercised. ai_handoff.md lists the three
+      settings most likely to need a tweak.
 - [ ] **Review the anatomy labels in `Data/EyeAnatomyCatalog.asset`**, in
       particular `Medial rectus` / `Lateral rectus` - these depend on whether
       the model is a left or a right eye, which could not be determined. See
@@ -39,13 +72,22 @@
       another badge switches straight to that part.
 - [ ] Markers are depth-tested and can be occluded. For always-on-top, add a
       URP Render Objects feature with Depth Test = Always on a dedicated layer
-      (`URPAssets/URPAsset_Renderer.asset` is writable here; the layer is not).
-- [ ] Six badges cluster near the middle in the exploded view, where the
-      nested shells all sit on one horizontal line. Per-part marker offsets in
-      the catalog would spread them.
-- [ ] `Lens` and `Tear film` are nearly invisible when focused - both use the
-      model's translucent `Mat.1`. Needs a call on whether to override those
-      two with an opaque or emissive material. See ai_handoff.md item 0.
+      (`URPAssets/URPAsset_ForwardRenderer.asset` is writable here; the layer is
+      not). `UiAlwaysOnTop` does the equivalent for the canvas by forcing
+      `unity_GUIZTestMode`, which may be the simpler route for markers too.
+- [ ] **Retry the custom hotspot shader.** decisions.md concluded hand-written
+      URP shaders draw nothing in this project, but that was measured under the
+      2D renderer, which would produce exactly that symptom for a 3D lit
+      SubShader. The conclusion may simply be wrong.
+- [x] ~~Six badges cluster near the middle in the exploded view~~ - worked
+      around in session 9 rather than fixed. The Next / Back navigator reaches
+      every structure regardless of whether its badge is occluded. Per-part
+      marker offsets in the catalog would still be the proper fix if the badges
+      themselves need to be reachable by hand.
+- [x] ~~`Lens` and `Tear film` are nearly invisible when focused~~ - done in
+      session 10. Any part whose materials are all below 0.75 alpha is swapped
+      onto `Materials/FocusHighlight.mat` while focused. The call went to a
+      translucent stand-in rather than an opaque one; decisions.md has why.
 
 ## Conditional
 

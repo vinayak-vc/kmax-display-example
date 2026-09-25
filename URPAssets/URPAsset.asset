@@ -17,7 +17,7 @@ MonoBehaviour:
   m_RendererType: 1
   m_RendererData: {fileID: 0}
   m_RendererDataList:
-  - {fileID: 11400000, guid: ad6397775d07720479b204bb30b06780, type: 2}
+  - {fileID: 11400000, guid: 683ea44e1372f3346be0ecb5ab2dd019, type: 2}
   m_DefaultRendererIndex: 0
   m_RequireDepthTexture: 0
   m_RequireOpaqueTexture: 0
@@ -100,8 +100,8 @@ MonoBehaviour:
     obsoleteHasProbeVolumes:
       m_Keys: []
       m_Values: 
-  m_PrefilteringModeMainLightShadows: 4
-  m_PrefilteringModeAdditionalLight: 4
+  m_PrefilteringModeMainLightShadows: 3
+  m_PrefilteringModeAdditionalLight: 3
   m_PrefilteringModeAdditionalLightShadows: 0
   m_PrefilterXRKeywords: 1
   m_PrefilteringModeForwardPlus: 0
