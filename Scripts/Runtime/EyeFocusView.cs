@@ -79,6 +79,16 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         /// <summary>
+        /// Raised whenever a part is focused or the view returns to overview. The argument is true
+        /// while a part is in focus.
+        ///
+        /// Focusing rewrites every renderer's material - the ghost on the parts around the focus,
+        /// and the originals again on the way out - so anything else that has swapped a material
+        /// has to know that its swap has just been undone.
+        /// </summary>
+        public event System.Action<bool> FocusChanged;
+
+        /// <summary>
         /// Camera distance the controller should fly to when framing a part.
         ///
         /// Pop-out is not something the part's own position can produce. The virtual screen sits at
@@ -195,6 +205,10 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             BeginTransition(ToLocal(worldTarget), Vector3.one * targetScale);
             isFocused = true;
+
+            if (FocusChanged != null) {
+                FocusChanged(true);
+            }
         }
 
         public void ClearFocus() {
@@ -213,6 +227,10 @@ namespace ViitorCloud.KmaxDisplayExample {
             SetFadedExcept(null);
             BeginTransition(restLocalPosition, restLocalScale);
             isFocused = false;
+
+            if (FocusChanged != null) {
+                FocusChanged(false);
+            }
         }
 
         /// <summary>
@@ -305,6 +323,33 @@ namespace ViitorCloud.KmaxDisplayExample {
         private static readonly int BaseColorFactorId = Shader.PropertyToID("baseColorFactor");
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly int ColorId = Shader.PropertyToID("_Color");
+
+        /// <summary>
+        /// Re-reads the material on every cached renderer as its new original.
+        ///
+        /// Anything that replaces a model's materials for good has to say so.
+        /// <see cref="VehicleFinishSwatches"/> puts the car's paint and trim onto private copies,
+        /// and <see cref="VehicleLightRig"/> does the same for every lamp; whichever of those ran
+        /// after <see cref="Awake"/> here left this view holding materials the renderers no longer
+        /// use, and the first trip through a focus would restore those over the top.
+        ///
+        /// Only the materials are re-read. The renderer list is deliberately left alone, because by
+        /// the time this is called the controller has spawned the hotspot badges under the model,
+        /// and re-scanning would sweep those in and ghost them along with the geometry.
+        /// </summary>
+        public void RefreshCachedMaterials() {
+            if (modelRenderers == null) {
+                return;
+            }
+
+            for (int i = 0; i < modelRenderers.Length; i++) {
+                if (modelRenderers[i] == null) {
+                    continue;
+                }
+
+                originalMaterials[i] = modelRenderers[i].sharedMaterials;
+            }
+        }
 
         private void CacheRenderers() {
             // Runs before the controller spawns hotspots, so this is purely the model's own meshes.

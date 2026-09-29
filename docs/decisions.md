@@ -1,5 +1,323 @@
 # Decisions
 
+## 2026-09-29 - An existing panel is repaired by the build step, not skipped
+
+**Decision:** `VolvoExhibitBuilder.BuildDoor` no longer returns early when a door pivot
+already exists. It compares the door against the current spec and adds whatever is
+missing. A hinge that has been withdrawn from the spec is taken down by
+`RemoveRetiredPanels`, which hands the geometry back to the car first, and `BuildUi`
+destroys the button of any group that no longer exists.
+
+**Why:** find-before-create was being read as leave-alone-if-present, and that is only
+safe while the spec never changes. It did change - the mirror indicators were added to
+the door spec after the doors had been built - and the result was worse than a stale
+door. `RemoveSourcePanels` cuts the two-sided source out of the car whether or not the
+halves were placed, so the mirror indicators disappeared from the model altogether and
+the indicator channel quietly ran on half its meshes. Nothing errored.
+
+An idempotent build step has to converge on the spec from wherever the scene happens to
+be, not just from empty. The same rule is what lets the hood and trunk be withdrawn
+without anyone opening the scene to delete their pivots by hand.
+
+**Cost:** the repair path has to shut the door before reparenting, because a part added
+while the panel is open is fixed at that angle relative to the rest of the door.
+
+## 2026-09-29 - The mesh split is safe because of clearance, not symmetry
+
+**Decision:** `VehicleMeshSplitter` continues to accept any panel whose halves both come
+out non-empty. It does not require the two halves to match.
+
+**Why:** the first nine panels each divided into two exactly equal triangle counts, and
+the docs recorded that as the property that made the cut trustworthy. It is not. The
+front door's interior card splits 76,512 / 56,224, because the driver's door carries
+window and mirror switchgear the passenger's door does not - and it is still a perfectly
+exact cut. What makes the cut exact is that no triangle straddles the centreline, which
+on this model is true by a wide margin: the nearest triangle to x = 0 on any panel cut so
+far is 5.7 mm away, and on the interior cards it is 43 mm.
+
+Requiring symmetry would have rejected a panel that splits perfectly well. The check that
+matters - both halves non-empty - already catches the failure it was meant to catch, a
+panel that is not mirrored at all.
+
+## 2026-09-29 - The interface is pinned by UIScaler, not made a ScreenSpaceOverlay canvas
+
+**Decision:** the engine exhibit's canvas stays world-space and carries the SDK's
+`UIScaler`, which rewrites its pose and size every frame from the rig's screen plane.
+It is also handed the rig camera as its event camera.
+
+**Why not a real overlay, which is what was asked for:** `VRRenderer` renders side by
+side - it gives the left eye the viewport `(0, 0, 0.5, 1)` and the right eye
+`(0.5, 0, 0.5, 1)`. A `ScreenSpaceOverlay` canvas ignores camera viewports entirely and
+is drawn once across the whole framebuffer, so it would span both eye images and never
+fuse on the hardware. `ScreenSpaceCamera` has the same problem in reverse: it would be
+drawn per eye but has no depth to sit at.
+
+`UIScaler` gives the behaviour the request was actually about - square to the viewer,
+fixed on the panel, clickable - and it is what the eye exhibit already uses. Anything
+that wants a true overlay should be a separate canvas that is not part of the stereo
+content.
+
+**Why the event camera matters as much as the scaler:** a world-space `GraphicRaycaster`
+with no camera assigned falls back to `Camera.main`, and this rig has none - the SDK
+disables the rig camera's own `Camera` component and renders through `left` and `right`
+sub-cameras it creates at runtime. With the field empty, every button on the canvas was
+unclickable. That is a trap for any new scene built on this rig, not just this one.
+
+## 2026-09-29 - The engine's own features are reached through an interface, not a type
+
+**Decision:** `IExhibitMachinery` is declared in `KmaxDisplayExample` and implemented by
+`Enginei4`. `ExhibitFeaturePanel` drives see-through and build variants through it.
+
+**Why:** `Enginei4` is in `Assembly-CSharp`, which already references
+`KmaxDisplayExample`. The exhibit can never name that type without closing a reference
+cycle. An interface declared on the exhibit side and implemented on the model side runs
+with the dependency rather than against it, and costs `Enginei4` nothing but the
+declaration - it already had every method.
+
+This is the same constraint `ExhibitMachineryGate` solved by holding a plain
+`MonoBehaviour` and toggling `enabled`. That works when the only thing needed is a
+property every behaviour has; an interface is what it takes to call something specific.
+Unity will not serialise a bare interface field, so the reference is still stored as a
+`MonoBehaviour` and cast once in `Awake`.
+
+## 2026-09-29 - ApplyVariation is new rather than SetVariation being reused
+
+**Decision:** `Enginei4` gained `ApplyVariation(int)`. `SetVariation(int)` keeps its
+exact previous behaviour and delegates the part-swapping half to it.
+
+**Why the old one could not be called:** it returns early unless the matching toggle in
+`allTogglesType` is on, and those toggles live on the canvas the exhibit disables, so no
+caller outside that canvas can satisfy it. It also has an early-out when the requested
+variation is already current, which makes it impossible to apply variation 0 from a cold
+start.
+
+**And why it must not be called even if those were worked around:** it calls
+`ActivateAllObjects`, which enables every object carrying a `MeshRenderer` anywhere under
+the model. The hotspot badges are three MeshRenderers each, parented to the parts they
+label, and are meant to stay hidden until the engine is open. One variation switch would
+have revealed all twelve. `ApplyVariation` only ever hides and shows variation parts,
+which is sufficient because nothing else is ever hidden by a variation.
+
+## 2026-09-29 - Overlapping transparency fades are cancelled
+
+**Decision:** `Enginei4` tracks its transparency coroutines and stops any still running
+before starting new ones.
+
+**Why:** each part's fade owns that part's material for the ten frames it runs. Toggling
+see-through off and straight back on left two fades racing over the same renderers, and
+the older fade-in finished last - putting the opaque material back while the interface
+believed the engine was see-through. A double-click was enough to reach it. Only
+transparency coroutines are tracked, so nothing else is affected, and cancelling
+mid-fade is safe: both coroutines read whatever material is on the renderer when they
+start, so they pick up correctly from a partial state.
+
+## 2026-09-29 - Button colours live in the ColorBlock, not on the graphic
+
+**Decision:** `BuildButton` leaves the button's `Image` white and puts every colour in
+the button's own `ColorBlock`. `ExhibitFeaturePanel` marks the selected build by writing
+`normalColor` and `selectedColor`, not `Image.color`.
+
+**Why:** a `Selectable` with a colour transition drives the target graphic's canvas
+renderer on every state change. Anything written to `Image.color` survives only until
+the pointer next touches that button, so the selected build lost its highlight as soon
+as any build was hovered.
+
+It also fixes the hover the first build shipped: with `normalColor` white and
+`highlightedColor` at 1.25 white, hovering crossfaded the button to flat white and lost
+the dark base entirely.
+
+## 2026-09-29 - The engine reuses the eye's runtime rather than getting its own
+
+**Decision:** `VirtualExhibition WR.unity` is built on the eye's components verbatim.
+`EyeAnatomyController`, `EyeExplodeView`, `EyeFocusView`, `EyeManipulator`,
+`ViewerFlyController`, `ExhibitAttractMode`, `AnatomyStylusInput`,
+`ExhibitPostProcessing`, `EyeHotspot.prefab`, `EyeGhost.mat` and `AnatomyPostFX.asset`
+are shared, not copied. Only the values differ.
+
+**Why:** none of them names the eye in anything but its type name. They work off a
+catalogue, a pose set and a model root - all injected. The engine needed no runtime
+change beyond one new gate component, and a shared fix now lands in both exhibits.
+
+**What this costs:** the type names read oddly against an engine, and the eye's
+assembly cannot reference `Enginei4`, which is in `Assembly-CSharp` and already
+references it the other way. Renaming the components to something model-neutral is
+worth doing if a third exhibit appears; with two it is churn.
+
+**Sixteen build steps on `EyeAnatomySceneUpgrader` went from `private` to `internal`**
+so the engine builder can call them instead of duplicating about 400 lines. Visibility
+only - no behaviour changed. What stayed private is what is genuinely eye-specific:
+the light intensities calibrated against near-white tissue, the focus-view and
+scale-box tuning, and the navigator UI that clones an existing button.
+
+## 2026-09-29 - The engine teardown is authored, not baked
+
+**Decision:** the 19 explode poses are authored as a direction-and-distance table in
+`EngineExhibitBuilder.GetTeardown`, in the model's native metres, and converted to each
+part's parent space at build time.
+
+**Why not baked, as the eye's are:** there is nothing to bake. `Models/Enginei4.FBX`
+imports with `animationType=None` and no clips; `Engine_opt.FBX` has one `Take 001`
+that is two keyframes over 0.033 s on the root, animating rotation and scale only, and
+the scene does not use that FBX anyway. Every moving thing in this model is procedural
+code in `Enginei4.Update`. `EyeAnatomyPoseBaker` has no input here.
+
+**Why parent space, via world:** `EngineBlock` and `CylinderHead` both carry a 270
+degree rotation about X. A local -Y offset on the oil pan would send it out of the side
+of the engine rather than off the bottom. The conversion goes root space -> world ->
+parent space; the exhibit's own scale appears on both sides and cancels, so the table
+stays in native metres and survives any later change to the exhibit scale.
+
+**Why the table is bigger than the catalogue:** 19 poses, 12 labels. The valves and
+springs must travel with the camshafts that open them, the plug leads with the plugs,
+and the timing belt off the front, but none of those is an assembly a viewer would ask
+about. Twelve badges on a model this busy is already a lot; nineteen is a thicket.
+
+## 2026-09-29 - The teardown is re-centred on the origin, and the block loses its anchor
+
+**Decision:** the builder measures how far the pulled-apart engine's bounds centre
+moves away from the assembled centre, and subtracts that drift from every top-level
+offset before baking.
+
+**Why:** an engine does not come apart symmetrically. Far more of it lifts off the top
+than drops out of the bottom, and the gearbox alone travels half a model-length back.
+Measured on the first build, that carried the whole model 0.046 m up and 0.049 m back
+at exhibit scale - enough to push the cam cover 0.04 m above a virtual screen only
+0.194 m tall, with the engine still comfortably small enough to fit. The extent was
+never the problem; where it sat was. `ViewerFlyController` orbits the origin and resets
+`focalCenter` to `Vector3.zero`, so an off-centre teardown orbits about empty space.
+
+**Solved, not measured once:** the bounds are defined by whichever parts are furthest
+out, and shifting everything can hand that job to a different part. The loop runs to a
+0.1 mm residual.
+
+**Applied only to groups directly under the model root.** The correction is a rigid
+shift of the whole teardown, so nested steps inherit it through the hierarchy. Applying
+it to a nested step as well moves that part twice - the oil pan once with the block it
+hangs off and again on its own account - and the solve ends up chasing a target it is
+itself moving. That was the bug behind an 0.8 mm overflow that would not close.
+
+**What it costs:** the engine block is no longer a fixed anchor; it sinks slightly as
+the engine opens. That is a fair trade for a teardown that stays in frame, and it means
+the offsets can be re-authored freely without the framing being re-derived by hand.
+
+## 2026-09-29 - The machinery is frozen while the engine is apart
+
+**Decision:** `ExhibitMachineryGate` disables `Enginei4` on the frame an explode starts
+and re-enables it only once the engine is fully reassembled.
+
+**Why:** the procedural animation and the explode do not actually collide - the driver
+only ever writes rotations and the local positions of parts *below* the group nodes the
+explode moves. What breaks is the connecting rods. `Rod1..4` aim at targets parented
+under the pistons, so the moment the pistons travel away from the block the rods swing
+across the gap to keep pointing at them, and the teardown reads as broken geometry
+rather than as an exploded view.
+
+Freezing also means `Enginei4.Start` - which caches every piston and rod rest position -
+can only ever run with the engine assembled. Started while apart, it would cache the
+exploded pose as the rest pose.
+
+**Why the driver is held as a plain `MonoBehaviour`:** `Enginei4` is in
+`Assembly-CSharp`, which references `KmaxDisplayExample`. Naming the type in the gate
+would close a reference cycle and neither assembly would compile. Toggling `enabled`
+needs no type knowledge.
+
+**`EyeExplodeView` gained a `TransitionStarted` event** for this. `TransitionCompleted`
+is too late - it fires once the parts have already flown apart. The event is additive
+and nothing else subscribes.
+
+## 2026-09-29 - The engine's original interface is disabled, not deleted
+
+**Decision:** `Canvas - Engine (1)` and the scene's single point light are deactivated.
+The builder also clears `Enginei4`'s `RPMSlider` and `ZoomSlider` references and sets
+`RPM` directly.
+
+**Why disabled rather than deleted:** that canvas is the only wiring for the
+transparency X-ray over 23 parts, the four tuning variations and the twelve part
+toggles. None of those is exposed by the exhibit interface yet, and deleting the canvas
+would throw away the only reference to them.
+
+**Why the slider references must be cleared, not just deactivated:** a slider on a
+deactivated object is still a live reference. `Enginei4` writes its parent's local scale
+from `ZoomSlider` every frame, and with the object merely inactive the null check passes
+and the write goes ahead: on the first frame of play the wrapper went back to the
+slider's value of 1, and the pulled-apart engine measured 2.24 m across a screen
+0.345 m wide. `Enginei4.Update` now treats both sliders as optional so clearing them is
+safe; with them assigned its behaviour is unchanged.
+
+## 2026-09-25 - Scale goes through the manipulator's zoom, not the transform
+
+**Decision:** `EyeScaleBox` puts a billboarded frame with four corner handles around
+the model. Dragging a corner scales it uniformly, through
+`EyeManipulator.SetZoom` rather than by writing to a transform.
+
+**Why not the transform:** `EyeManipulator.ApplyTransform` runs every frame and
+rewrites `pivot.localScale` from its own `_currentZoom`. Anything written to the
+pivot directly is gone by the next frame. Routing through the manipulator also means
+Reset View restores the scale along with rotation and pan for free - verified:
+`ResetTransform` takes zoom 1.8 back to 1.0.
+
+`SetZoom` writes both the current and target values, not just the target.
+`ApplySmoothing` only runs on the pointer-manipulation path, which is switched off
+while `ViewerFlyController` owns navigation, so setting the target alone would never
+reach the model.
+
+**Why four corners on a plane, not eight on a box:** a wireframe cube in stereo is a
+thicket of lines that reads as clutter and hides the anatomy behind it. Four corners
+billboarded to the viewer are unambiguous from any angle, and they match what the
+gesture actually means - dragging a corner outward is a screen-space idea, not a
+volumetric one. The rectangle hugs the silhouette by projecting the bounds' eight
+corners onto the camera's right and up axes, rather than being a loose square sized
+to the longest diagonal.
+
+**The drag centre is frozen at grab time.** Read live it moves as the model grows,
+which feeds the scale back into its own input.
+
+## 2026-09-25 - `IsPointerOverGameObject` was suppressing orbit over the model
+
+**Finding, and a regression I introduced.** `ViewerFlyController.IsPointerOverUI`
+used `EventSystem.IsPointerOverGameObject()`, which reports **any** object the event
+system hit. Once the eye gained mesh colliders and the camera a `KmaxPhysicRaycaster`,
+that became true whenever the pointer was anywhere on the model - so mouse drag
+stopped orbiting over the very thing it is meant to turn.
+
+It now raycasts and returns true only for hits under a `Canvas`. Scale handles are
+excluded separately, through `EyeScaleBox.SuppressViewDrag`, because they are 3D and
+would otherwise fall on the orbit side of that test.
+
+`SuppressViewDrag` is static, which is the honest shape for it: this is input
+arbitration between systems with no reason to hold references to each other - the fly
+controller and the stylus both have to stand down, and neither should have to know
+what a scale box is. It covers hover as well as drag, because the orbit's own drag
+threshold is smaller than the EventSystem's - without that, the view would start
+turning before the drag was ever recognised and the grab would be lost.
+
+## 2026-09-25 - The pad was inaudible because of its pitch, not its level
+
+**Finding.** Reported from the device as "BG music is not audible". The level was
+low (0.16), but the real problem was that the pad was built on a 110 Hz root - a low
+A, below what a display's own panel speakers reproduce. It was playing correctly and
+simply could not be heard.
+
+Root moved to 196 Hz and the voicing reweighted towards the octave and fifth above
+it, so the chord sits in a band small speakers carry. Measured on the generated clip:
+dominant energy moved from ~110 Hz to **~414 Hz**, and effective output roughly 2.8x
+higher at the new 0.45 level.
+
+The fade-in also came down from 3.5 s to 1.5 s. Long enough not to announce itself,
+short enough that someone checking whether there is music does not conclude there is
+none.
+
+## 2026-09-25 - Stylus vibration is rate-limited, not just weaker
+
+**Finding.** Reported from the device as too strong. Strength was part of it (hit
+pulse 22, reset 40, now 8 and 18), but the bigger problem was frequency: every
+structure carries its own collider, so sweeping the beam across the eye crosses a
+boundary every few frames and fired a pulse each time. The pen buzzed continuously
+rather than ticking on arrival.
+
+`minVibrationInterval` (0.25 s) puts a floor between pulses. Feedback on arrival is
+the intent; a constant buzz is noise.
+
 ## 2026-09-25 - Pop-out is a camera distance, not a part position
 
 **Decision:** `EyeFocusView.focusPopOut` (0.10 m) sets how far a focused part floats

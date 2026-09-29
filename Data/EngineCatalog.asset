@@ -1,0 +1,78 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 67d20fe47c4b8b140be827ec2b0b2e70, type: 3}
+  m_Name: EngineCatalog
+  m_EditorClassIdentifier: KmaxDisplayExample::ViitorCloud.KmaxDisplayExample.EyeAnatomyCatalog
+  parts:
+  - displayName: Engine Block
+    description: The casting everything else bolts to. It carries the four cylinder
+      bores, the water jacket around them and the main bearing saddles the crankshaft
+      runs in. Nothing here moves, which is why it is the one part left standing
+      when the rest is taken off it.
+    partPath: EngineBlock
+  - displayName: Oil Pan
+    description: The sump, bolted to the bottom of the block. Oil drains back into
+      it under gravity and the pump draws from it, so it is both the reservoir and
+      the lowest point in the engine.
+    partPath: EngineBlock/OilPan
+  - displayName: Crankshaft & Connecting Rods
+    description: Turns the pistons' up-and-down travel into rotation. The four throws
+      are set 180 degrees apart in the 1-3-4-2 firing order, so one piston is always
+      on a power stroke. This is the shaft every other moving part is timed against.
+    partPath: Crankshaft
+  - displayName: Clutch & Flywheel
+    description: The flywheel's mass carries the crank between power strokes and
+      smooths the pulses into steady rotation. The clutch on its face is what couples
+      all of that to the gearbox, or lets it spin free.
+    partPath: Crankshaft/Flywheel
+  - displayName: Cylinder Head
+    description: Closes the top of the bores and forms the combustion chambers. It
+      carries the valve seats, the intake and exhaust ports feeding them, and the
+      passages that let coolant up out of the block.
+    partPath: CylinderHead
+  - displayName: Cylinder Head Cover
+    description: The cam cover. It seals the top of the head and keeps the oil thrown
+      off the camshafts inside the engine. Usually the first thing off when the valvetrain
+      needs looking at.
+    partPath: CylinderHead/CylinderHeadCovers
+  - displayName: Camshafts & Valvetrain
+    description: Twin overhead camshafts, one for the intake valves and one for the
+      exhaust. They are geared to run at half crankshaft speed, because each valve
+      opens once every two revolutions, and their lobe profile is what sets when
+      and how far each valve lifts.
+    partPath: Camshafts
+  - displayName: Spark Plugs & Wires
+    description: One plug per cylinder, threaded through the head into the roof of
+      each combustion chamber. The leads carry the high-tension pulse that jumps
+      the gap and lights the charge, timed off the distributor gear on the head.
+    partPath: SparkPlugs
+  - displayName: Intake Manifold
+    description: Splits the incoming air between the four cylinders and holds the
+      throttle body and air filter. Runner length is tuned rather than arbitrary
+      - the pressure waves in these pipes help push the charge in as each intake
+      valve closes.
+    partPath: IntakeManifolds
+  - displayName: Exhaust Manifold
+    description: Collects the burnt gas from all four exhaust ports into one pipe.
+      On the turbocharged build of this engine it is also what feeds the turbine,
+      which is why swapping it swaps the whole turbo assembly with it.
+    partPath: ExhaustManifolds
+  - displayName: Fuel Rail & Injectors
+    description: Holds fuel at regulated pressure across all four injectors so each
+      one delivers the same amount for the same open time. The injectors spray into
+      the intake ports just behind the valves.
+    partPath: FuelRail
+  - displayName: Gearbox
+    description: Five forward ratios on two shafts. The primary shaft turns with
+      the clutch and the gears on the secondary shaft step that down - from 1.47
+      times crank speed in the lowest ratio to about half in the highest.
+    partPath: Gearbox

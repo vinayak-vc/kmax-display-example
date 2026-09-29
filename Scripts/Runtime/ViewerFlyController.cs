@@ -273,6 +273,15 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         private void UpdateMouseOrbit() {
+            // A press aimed at a scale handle belongs to that handle. The handle's drag threshold
+            // is larger than this one, so without standing down here the view would start turning
+            // before the drag was ever recognised.
+            if (EyeScaleBox.SuppressViewDrag) {
+                _isPointerPressed = false;
+                _isPointerDragging = false;
+                return;
+            }
+
             bool isHeld = Input.GetMouseButton(0) || Input.GetMouseButton(1);
             Vector2 mousePosition = Input.mousePosition;
 
@@ -442,12 +451,42 @@ namespace ViitorCloud.KmaxDisplayExample {
                 Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.RightArrow);
         }
 
+        /// <summary>
+        /// True only when the pointer is over an actual interface element.
+        ///
+        /// Deliberately not <c>EventSystem.IsPointerOverGameObject</c>. That reports any object the
+        /// event system hit, and since the eye gained mesh colliders and the camera a physics
+        /// raycaster, it is true whenever the pointer is anywhere on the model - which silently
+        /// stopped mouse drag from orbiting over the very thing it is meant to turn.
+        /// </summary>
         private bool IsPointerOverUI() {
-            if (EventSystem.current == null) {
+            EventSystem events = EventSystem.current;
+            if (events == null) {
                 return false;
             }
 
-            return EventSystem.current.IsPointerOverGameObject();
+            if (_pointerData == null) {
+                _pointerData = new PointerEventData(events);
+            }
+
+            _pointerData.Reset();
+            _pointerData.position = Input.mousePosition;
+
+            RaycastScratch.Clear();
+            events.RaycastAll(_pointerData, RaycastScratch);
+
+            for (int i = 0; i < RaycastScratch.Count; i++) {
+                GameObject hit = RaycastScratch[i].gameObject;
+                if (hit != null && hit.GetComponentInParent<Canvas>() != null) {
+                    return true;
+                }
+            }
+
+            return false;
         }
+
+        private static readonly System.Collections.Generic.List<RaycastResult> RaycastScratch =
+            new System.Collections.Generic.List<RaycastResult>();
+        private PointerEventData _pointerData;
     }
 }

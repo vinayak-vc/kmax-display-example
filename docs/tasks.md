@@ -1,5 +1,345 @@
 # Tasks
 
+## Session 18 (2026-09-29) - the door interiors, and the hood and trunk withdrawn
+
+Two changes to the Volvo, both asked for directly.
+
+### The interior cards now belong to the doors
+
+`Plane.057` and `Plane.027` - Blender default names the modeller never changed, carrying
+the `DoorPanelFront` and `DoorPanelRear` materials - are the inside faces of the doors:
+the trim card, armrest, speaker grille and switch panel. They were sitting at the car
+root, so every door opened and left its own interior behind, hanging in the doorway.
+
+They are two-sided like every other panel on this car, so they go through the same
+splitter and onto the same hinges. Both cut cleanly - nothing on either is within 43 mm
+of the centreline.
+
+The front card is the first panel on this model that is **not symmetric**: 76,512
+triangles on the left against 56,224 on the right, because the driver's door carries the
+window and mirror switchgear and the passenger's does not. That is fine and always was -
+the splitter's real requirement is that no triangle straddles the centreline, not that
+the halves match - but the note claiming every panel divides into exactly equal counts
+was load-bearing enough to be worth correcting, here and in the splitter itself.
+
+### The hood and the trunk are no longer openable
+
+Withdrawn on request. Both hinges are gone from the spec, and `RemoveRetiredPanels`
+takes down any that a previous build left in the scene, handing the geometry back to the
+car on the way out rather than deleting it with the pivot. `BuildUi` now also destroys
+any panel button left over from a group that no longer exists, which it previously
+abandoned in the canvas.
+
+Two panel groups remain: **Doors** and **Sunroof**.
+
+### A missing part found on the way
+
+The doors were built before the mirror indicators were added to the spec, and
+`BuildDoor` returned early whenever a door pivot already existed - so those four meshes
+were cut out of the car by `RemoveSourcePanels` and never put back. The mirror
+indicators had been absent from the scene entirely, and the indicator channel had been
+running on four renderers instead of eight.
+
+`BuildDoor` now repairs an existing door instead of skipping it: it adds any piece the
+door is missing and leaves alone anything already there. That is what an idempotent
+build step should have been doing, and it is what fixed the cards and the indicators in
+the same pass. It shuts the door before reparenting, because a piece added to a door
+left ajar would be fixed at that angle relative to the rest of the door for good.
+
+### Verified
+
+- All four doors swing to 62 degrees and back with their cards attached; the front-left
+  card travels from x -0.0416 to -0.0672 with its skin.
+- Indicator channel drives 9 material instances and blinks - caught mid-rise at level
+  0.33, emission RGBA(1.65, 0.59, 0.04).
+- Two panel buttons in the canvas, "Open the doors" and "Tilt the sunroof", both wired.
+- 3,273,682 active triangles, up 6,864 from the mirror indicators returning. Well inside
+  the envelope measured last session.
+
+## Session 17 (2026-09-29) - the Volvo S90 exhibit
+
+Third exhibit, built by **`Kmax/Volvo Exhibit/Set Up Volvo Exhibit`** into
+`Model/VOLVO/VolvoS90.unity`, which shipped with nothing in it but a camera.
+
+### The geometry problem that shaped everything
+
+Every panel that exists on both sides of the car is **one mesh**. `Door Front` is a
+single 1.85 m-wide mesh holding both front doors; the same goes for the rear doors, the
+handles, the door glass and the mirrors. Hinging one of those swings both doors as a
+rigid body and the left one sweeps through the cabin.
+
+`VehicleMeshSplitter` cuts them. The cut is exact rather than approximate: the nearest
+triangle to the centreline on any of these panels is 5.7 mm away, so sorting whole
+triangles by the sign of their centroid's x never crosses an edge and never needs a new
+vertex. (Every panel known at the time also divided into two exactly equal triangle
+counts. That turned out to be a coincidence of this set rather than a rule - see session
+18 - and it is the clearance, not the symmetry, that makes the cut safe.) Submeshes are
+preserved because the doors carry five each (paint, gloss black, chrome, rubber,
+plastic) and the renderer's material array is indexed by submesh.
+
+The source FBX is untouched - both halves are new assets under `Model/VOLVO/Split/`.
+
+Hood, trunk and sunroof are already single centre-hinged panels and need no cutting.
+
+### Built
+
+- **Four doors on real hinges**, each carrying its own skin, handle, glass and - on the
+  front - its mirror and the mirror's indicator. Pivots stand at the leading edge; the
+  geometry is reparented onto them without moving.
+- **Hood, trunk and sunroof** on their own hinges.
+- **A full lamp rig**: interior, daytime running, headlights, fog, tail, reverse and
+  blinking indicators, seven channels over about forty meshes. The modeller built every
+  reflector and emitter as its own mesh, so nothing is approximated.
+- **Ignition** staged over two seconds - cabin first while the starter turns, exterior
+  lamps once it catches, then the idle fades in.
+- **Synthesised engine audio**. `ProceduralAudio` gained `CreateEngineStart` and
+  `CreateEngineIdle`; the idle is built from the firing rate (26 Hz is about 780 rpm on a
+  four-stroke four) rather than from an engine note, and the per-cycle noise is generated
+  once and replayed so the loop is seamless. The idle source sits at the tailpipe and the
+  starter at the engine bay, both 3D.
+- **Interface** on the shared world-space canvas: a button per panel group, ignition,
+  lamps, reset.
+- Fly camera, manipulator, focus view, stylus and post-processing all reused unchanged.
+
+### Measured
+
+- **3,266,818 triangles active, 6,533,636 across both eyes.** On an RTX 3060 that runs
+  at **105-164 fps**, so the decimation that was held in reserve is not needed. This was
+  the open question when the work started; it is now answered.
+- Car 0.105 x 0.075 x 0.260 m, centred on the origin the rig orbits.
+- Seven lamp channels; reverse correctly stays off with the car running.
+
+### Three faults found and fixed while building
+
+**The scene held two cars.** The FBX had been dragged in to look at, and the builder
+added its own - 6.5 million triangles, one standing through the other. The build now
+removes any loose instance of the model from the scene root. It also disables the stock
+`Main Camera`, which was rendering the car a second time and holding the scene's only
+`AudioListener`, leaving the rig without one.
+
+**All the glass imported opaque.** Every glazed material came in as `_Surface` 0, alpha
+1, queue 2000 - so the windows, sunroof and lamp lenses were solid panels and there was
+no interior to see from outside at all. The build now makes them properly transparent.
+
+**The cabin light was a blowtorch.** With the glass opaque this was invisible; the moment
+the windows went transparent it washed out the whole car. The rig had been imposing one
+hardcoded intensity per light type, which is wrong twice over - a headlight and a
+courtesy lamp are nothing alike, and the right figure depends entirely on how big the
+model is in the scene. A lamp inside a car 0.26 m long sits centimetres from everything
+it lights. The rig now captures each light's authored intensity and scales that; the
+cabin lamp is 0.09. This is the same inverse-square trap the eye's notes already warn
+about, walked into again.
+
+### Not done
+
+The interior focus view, paint and trim swatches, and the guided tour were all agreed for
+this pass and are **not built**. See roadmap.md - the interior focus is the one with a
+design note attached, because the camera cannot simply fly into the cabin.
+
+## Session 16 (2026-09-29) - the engine's own features, and three faults from the first build
+
+Re-run `Kmax/Engine Exhibit/Set Up Engine Exhibit` to pick all of this up.
+
+### Three faults the first build shipped with
+
+**The particles were magenta.** `CloneOrCreate` falls back to `new GameObject` +
+`AddComponent<ParticleSystem>()` when there is no system to clone, and a particle
+system made that way has no material - which Unity draws as solid magenta. The eye
+never hit that branch because its scene already had a `MoteField` to clone from. The
+creation path now assigns `AnatomyMote.mat`, and `RepairParticleMaterials` fixes any
+system an earlier run already left without one, since every step here finds before it
+creates and would otherwise skip them forever.
+
+**The interface floated in the scene at an angle.** The canvas was world-space at the
+origin with no rotation, so it tilted away as soon as the rig orbited. The eye's canvas
+carries the SDK's `UIScaler`, which rewrites the canvas pose and size every frame from
+the rig's own screen plane; the engine's was built without it.
+
+**Nothing on the canvas could be clicked.** A world-space `GraphicRaycaster` needs an
+event camera to turn a pointer position into a ray. The field was empty, so it fell back
+to `Camera.main` - and there is none, because the SDK disables the rig camera's own
+`Camera` component and renders through the `left` and `right` sub-cameras it builds at
+runtime. The canvas is now handed the rig camera. Verified: all ten buttons return
+themselves from a raycast at their own screen position.
+
+> The request was for an overlay canvas. `UIScaler` is what gives that behaviour here -
+> square to the viewer, fixed on the panel - while staying stereo-correct. A true
+> `ScreenSpaceOverlay` canvas would break on the hardware: `VRRenderer` renders side by
+> side, giving each eye half the viewport, and an overlay ignores camera viewports and
+> is drawn once across the whole framebuffer. See decisions.md.
+
+### See-through and build variants
+
+Both already existed on `Enginei4` and were reachable only from the canvas it shipped
+with. They are now on the exhibit interface, down the top-left edge.
+
+- `IExhibitMachinery` declares them on the exhibit side and `Enginei4` implements it.
+  That is the direction the assembly dependency already runs: `Enginei4` is in
+  `Assembly-CSharp`, which references `KmaxDisplayExample`, so the exhibit can never
+  name that type directly.
+- `ExhibitFeaturePanel` owns the buttons and the state.
+- `Enginei4.ApplyVariation` is new. `SetVariation` could not be reused: it returns early
+  unless the matching toggle in `allTogglesType` is on, and those toggles are on the
+  disabled canvas. It also calls `ActivateAllObjects`, which shows **every** object with
+  a MeshRenderer - including the hotspot badges, which are three MeshRenderers each and
+  are meant to stay hidden until the engine is open. `SetVariation` keeps its exact old
+  behaviour and now delegates the part-swapping half to `ApplyVariation`.
+- Variants are labelled from what they actually swap in: Stock, Sport, Throttle bodies,
+  Turbo.
+- The fade alpha was **0**, which deleted the casing rather than making it see-through.
+  Now 0.15, and measured settling at 0.20.
+
+### Two more faults found while testing this
+
+**Toggling see-through off and straight back on left the engine solid** with the button
+insisting it was see-through. `Enginei4` never cancelled its fade coroutines, so two
+overlapping fades fought over the same renderers and the older one finished last,
+putting the opaque material back. It now tracks and cancels them. Verified with
+on/off/on issued in a single frame: all casing ends on the fade material, state agrees.
+
+**The selected build button lost its highlight.** The tint was written to `Image.color`,
+but a `Selectable` with a colour transition drives the canvas renderer directly on every
+state change, so hovering any button threw it away. The selection is now written into
+the button's own `ColorBlock`, and `BuildButton` leaves the graphic white and puts all
+its colours there too - which also fixes the hover, which had been crossfading to
+1.25 white and losing the dark base.
+
+### Measured
+
+All ten buttons clickable. Canvas forward-dot against the camera 1.0000 - square on.
+Five particle systems on `AnatomyMote`. Variants swap turbo, manifolds, head covers,
+cams and filters, with the badges staying hidden. See-through puts all 23 casing parts
+on the fade material at alpha 0.20 and leaves internals opaque. Focusing a part stands
+see-through down and locks its button, because focus rewrites every material anyway.
+
+### A note for whoever tests this next
+
+`manage_camera screenshot` **pauses the editor**. A transition measured straight after
+one looks stuck - the explode sat at 0.036 for several minutes of wall clock. Unpause
+before concluding anything is broken. Attract mode also fires after 30 s idle and will
+expand and tour the engine between round trips; disable it for deterministic tests.
+
+## Session 15 (2026-09-29) - the i4 engine on the exhibit stack
+
+`CarEngineAnimated - i4/VirtualExhibition WR.unity` now runs the same exhibit as the
+eye. One command builds it: **`Kmax/Engine Exhibit/Set Up Engine Exhibit`**. It is
+idempotent, and it refuses to run in play mode because the closed pose is read from
+the scene.
+
+### What the engine actually had
+
+No animation clips at all. `Models/Enginei4.FBX` imports with `animationType=None`,
+and the one `Take 001` in `Engine_opt.FBX` is a two-key, 0.033 s stub on the root -
+an empty take, on an FBX the scene does not even use. Everything that moves is
+procedural code in `Enginei4.Update`, all of it slaved to a single `RPM` float:
+crank 1x, cams 1/2x, gearbox shafts -1x and 1.47x, five gear ratios, two starter
+gears, turbo fan, distributor, three pulleys, 16 valves opening on cam-phase windows
+with their springs compressing, four pistons driven off the rods' Y delta, and both
+belts scrolling by UV offset. Plus three non-RPM features: a 23-part transparency
+X-ray, four tuning variations, and twelve part toggles.
+
+So unlike the eye - whose 23 clips the pose baker samples - the teardown had nothing
+to bake from and is authored in `EngineExhibitBuilder.GetTeardown`.
+
+### What was built
+
+- **19 teardown poses, 12 catalogued assemblies.** The pose set moves more than the
+  catalogue labels: the valves have to travel with the cams that open them and the
+  plug leads with the plugs, but neither is an assembly worth a badge.
+- **Reused the whole runtime.** `EyeAnatomyController`, `EyeExplodeView`,
+  `EyeFocusView`, `EyeManipulator`, `ViewerFlyController`, `ExhibitAttractMode`,
+  `AnatomyStylusInput`, `ExhibitPostProcessing`, the hotspot prefab, the ghost
+  material and the post-FX profile are all the eye's, unchanged. Sixteen generic
+  build steps on `EyeAnatomySceneUpgrader` went from `private` to `internal` and are
+  called directly rather than copied.
+- **One new runtime script**, `ExhibitMachineryGate`, and one new editor script,
+  `EngineExhibitBuilder`.
+- The scene had **no XR rig, no EventSystem and no colliders** - its UI could not be
+  clicked at all. It now has the rig, a single `AnatomyPen`, `KmaxInputModule` and
+  65 fitted mesh colliders (every mesh is readable, so no box fallbacks).
+
+### Measured
+
+- Assembled 0.137 x 0.077 x 0.160 m, centred on the origin to four decimal places.
+- Pulled apart 0.240 x 0.155 x 0.218 m, also centred on the origin exactly - 69% of
+  the 0.3454 m screen width and 80% of its 0.1943 m height, both in frame.
+- Machinery stops on the frame the explode starts and restarts only once the engine
+  is fully back together; the crank was confirmed moving again afterwards.
+- 12 parts resolved, 12 hotspots, 12 pickers. Attract tour reached 11/12 with the
+  camera flying to each. Focus distance 0.400 m, so the 0.100 m pop-out is intact.
+
+### Two bugs this turned up
+
+**The teardown walked out of frame.** An engine does not come apart symmetrically -
+far more lifts off the top than drops out of the bottom, and the gearbox travels half
+a model-length backwards. The authored offsets carried the whole model 0.046 m up and
+0.049 m back, putting the cam cover above a screen 0.194 m tall while the engine was
+still small enough to fit easily. The builder now measures that drift and takes it
+back out. It has to be solved rather than measured once, because the correction moves
+whichever part defines the bounds, and it must be applied only to the groups directly
+under the model root - a nested step like the oil pan would otherwise be shifted twice,
+once with the block it hangs off and again on its own account.
+
+**The engine threw away its own scale.** `Enginei4` writes its parent's local scale
+from `ZoomSlider` every frame. Deactivating the legacy canvas is not enough, because a
+slider on a deactivated object is still a live reference: the null check passes and the
+write goes ahead. On the first frame of play the wrapper went back to the slider's value
+of 1 and the pulled-apart engine measured **2.24 m across a 0.345 m screen**. The builder
+now clears both slider references outright.
+
+### Not done
+
+The transparency X-ray, the four tuning variations and the twelve part toggles are
+still only reachable from the old screen-space canvas, which is left in the scene
+**disabled** rather than deleted so that wiring survives. Exposing them through the
+exhibit interface is the obvious next task - see roadmap.md.
+
+## Session 14 (2026-09-25) - scale handles, and two device fixes
+
+### Drag-to-scale bounding box
+
+`EyeScaleBox` puts a billboarded frame with four corner handles around the model.
+Dragging a corner scales it uniformly. Four corners on a plane rather than eight on a
+cube: a wireframe box in stereo is clutter that hides the anatomy, and dragging a
+corner is a screen-space gesture anyway.
+
+Scale is driven through `EyeManipulator.SetZoom`, not a transform - `ApplyTransform`
+rewrites `pivot.localScale` from its own zoom every frame, so a direct write is gone
+by the next one. Routing through it also means Reset View restores the scale for free.
+
+Measured: dragging a corner to 1.5x its grab radius gives zoom 1.500, to 0.7x gives
+0.700, clamped to the manipulator's 0.6-2.0 range. `ResetTransform` takes 1.8 back
+to 1.0. The frame tracks the model at any scale and hides while a part is focused.
+
+### A regression this turned up
+
+`ViewerFlyController.IsPointerOverUI` used `EventSystem.IsPointerOverGameObject()`,
+which reports **any** object the event system hit. Once the eye gained mesh colliders
+and the camera a physics raycaster - both added earlier in this run of sessions -
+that became true whenever the pointer was over the model, so **mouse drag stopped
+orbiting over the model itself**. It now returns true only for hits under a `Canvas`.
+
+Scale handles are suppressed separately through `EyeScaleBox.SuppressViewDrag`, which
+covers hover as well as drag: the orbit's drag threshold is smaller than the
+EventSystem's, so without it the view would start turning before the drag was
+recognised.
+
+### Two fixes reported from the device
+
+- **Vibration too strong.** Strength came down (hit 22 -> 8, reset 40 -> 18), but the
+  real problem was frequency: every structure has a collider, so sweeping the beam
+  fired a pulse every few frames and the pen buzzed continuously. Added a 0.25 s floor
+  between pulses.
+- **Music inaudible.** Not primarily a level problem. The pad was built on a 110 Hz
+  root, below what panel speakers reproduce - it was playing correctly and could not
+  be heard. Root moved to 196 Hz with the voicing reweighted upward; measured on the
+  generated clip, dominant energy moved from ~110 Hz to **~414 Hz**. Level 0.16 ->
+  0.45 and fade-in 3.5 s -> 1.5 s.
+
+**Not verified:** audibility and vibration strength on the device - both are why they
+were reported in the first place, and neither can be judged from the editor. The
+numbers are measurements of the signal, not of what it sounds like in the room.
+
 ## Session 13 (2026-09-25) - engagement: attract loop, pop-out, wrist turn
 
 Three changes aimed at the gap the polish could not close: the exhibit had no reason

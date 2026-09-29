@@ -1,0 +1,72 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56b892bea79d61a4181c138c0f79285c, type: 3}
+  m_Name: EngineExplodePoses
+  m_EditorClassIdentifier: KmaxDisplayExample::ViitorCloud.KmaxDisplayExample.EyeExplodePoseSet
+  poses:
+  - partPath: EngineBlock
+    closedPosition: {x: -0.26085734, y: 0.31399158, z: 0.4621811}
+    openPosition: {x: -0.24085742, y: 0.21046007, z: 0.7321811}
+  - partPath: EngineBlock/OilPan
+    closedPosition: {x: 0.012016699, y: 0.2076161, z: -0.16406128}
+    openPosition: {x: 0.012016699, y: 0.20761614, z: -0.4240613}
+  - partPath: Crankshaft
+    closedPosition: {x: -0.2610798, y: 0.20637248, z: 0.15925065}
+    openPosition: {x: -0.24107987, y: -0.05715902, z: 0.42925063}
+  - partPath: Crankshaft/Flywheel
+    closedPosition: {x: 0.000076442964, y: -0.000029168694, z: -0.16319233}
+    openPosition: {x: 0.000076442964, y: -0.000029180059, z: -0.42319232}
+  - partPath: Pistons
+    closedPosition: {x: 0, y: 0, z: 0}
+    openPosition: {x: 0.019999925, y: -0.003531508, z: 0.26999998}
+  - partPath: CylinderHead
+    closedPosition: {x: -0.26085734, y: 0.31399158, z: 0.46183565}
+    openPosition: {x: -0.24085742, y: 0.43046007, z: 0.7318356}
+  - partPath: CylinderHead/CylinderHeadCovers
+    closedPosition: {x: 0, y: 0, z: 0}
+    openPosition: {x: 0, y: -0.000000014901161, z: 0.18}
+  - partPath: CylinderHead/SparkPlugWires
+    closedPosition: {x: -0.0003219545, y: -0.0017069011, z: 0.27208644}
+    openPosition: {x: -0.14032196, y: -0.0017069309, z: 0.5420865}
+  - partPath: Camshafts
+    closedPosition: {x: 0, y: 0, z: 0}
+    openPosition: {x: 0.019999925, y: 0.21646848, z: 0.26999998}
+  - partPath: IntakeValves
+    closedPosition: {x: -0.2056726, y: 0.5113783, z: 0.282047}
+    openPosition: {x: -0.13567269, y: 0.5678468, z: 0.552047}
+  - partPath: IntakeValvesSprings
+    closedPosition: {x: -0.20225286, y: 0.5146386, z: 0.28211105}
+    openPosition: {x: -0.13225293, y: 0.5711071, z: 0.552111}
+  - partPath: ExhaustValves
+    closedPosition: {x: -0.31376144, y: 0.5113684, z: 0.2820476}
+    openPosition: {x: -0.3437615, y: 0.5678369, z: 0.5520476}
+  - partPath: ExhaustValvesSprings
+    closedPosition: {x: -0.31550884, y: 0.5137328, z: 0.4788622}
+    openPosition: {x: -0.34550893, y: 0.5702013, z: 0.74886215}
+  - partPath: SparkPlugs
+    closedPosition: {x: -0.26047304, y: 0.5237539, z: 0.4621969}
+    openPosition: {x: -0.24047312, y: 0.6702224, z: 0.73219687}
+  - partPath: IntakeManifolds
+    closedPosition: {x: 0, y: 0, z: 0}
+    openPosition: {x: 0.47999993, y: -0.043531507, z: 0.26999998}
+  - partPath: ExhaustManifolds
+    closedPosition: {x: 0, y: 0, z: 0}
+    openPosition: {x: -0.48000008, y: -0.10353151, z: 0.26999998}
+  - partPath: FuelRail
+    closedPosition: {x: -0.07600989, y: 0.57504934, z: 0.2834446}
+    openPosition: {x: 0.24399003, y: 0.7115178, z: 0.5534446}
+  - partPath: Gearbox
+    closedPosition: {x: -0.2610798, y: 0.20637248, z: -0.0019641728}
+    openPosition: {x: -0.24107987, y: 0.102840975, z: -0.27196422}
+  - partPath: TimingBelt
+    closedPosition: {x: -0.24267885, y: 0.4132462, z: 0.55370885}
+    openPosition: {x: -0.22267893, y: 0.3097147, z: 1.1237088}

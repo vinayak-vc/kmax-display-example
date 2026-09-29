@@ -19,8 +19,11 @@ Assets/Games/kmax-display-example/
       Runtime/Resources/       StylusLine.prefab, KmaxPenOne.asset (Resources.Load target)
       Documentation~/          HTML API docs, hidden from the AssetDatabase
   Scripts/Editor/              KmaxDisplayExample.Editor - backend switcher
-  Scenes/EyeAnatomy.unity      the module's first scene
+  Scenes/EyeAnatomy.unity      the eye anatomy exhibit
   Model/EyeAnatomy.glb         anatomical eye model (glTFast ScriptedImporter)
+  Data/                        catalogues and explode pose sets for both exhibits
+  CarEngineAnimated - i4/      the i4 engine exhibit: scene, FBXs, materials, textures,
+                               and Enginei4.cs, its procedural animation driver
   docs/                        this documentation set
 ```
 
@@ -45,6 +48,23 @@ Assets/Games/kmax-display-example/
 > **Every light intensity in the scene is calibrated against the corrected
 > renderer and the tonemapper.** Without post-processing the model's near-white
 > albedo clips the moment lighting is strong enough to read.
+
+### Scaling the model
+
+`EyeScaleBox` drives scale through `EyeManipulator.SetZoom`, **never** by writing to a
+transform. `EyeManipulator.ApplyTransform` rewrites `pivot.localScale` from its own
+`_currentZoom` every frame, so a direct write is gone by the next one. Going through
+the manipulator also means Reset View restores the scale along with rotation and pan.
+
+> [!IMPORTANT]
+> `ViewerFlyController.IsPointerOverUI` must test for a `Canvas`, not call
+> `EventSystem.IsPointerOverGameObject()`. That reports any object the event system
+> hit, and since the eye gained mesh colliders and the camera a physics raycaster it
+> is true over the whole model - which silently stops mouse drag orbiting the model.
+>
+> Scale handles are 3D, so they fall on the orbit side of that test and are suppressed
+> separately by the static `EyeScaleBox.SuppressViewDrag`. It covers hover as well as
+> drag, because the orbit's drag threshold is smaller than the EventSystem's.
 
 ### Stereo pop-out
 
@@ -128,6 +148,183 @@ What the switch changed in practice:
 - Hand-written Built-in CG shaders silently draw nothing. See decisions.md for
   why the hotspot marker ended up on a stock URP shader.
 
+## Scene: `CarEngineAnimated - i4/VirtualExhibition WR.unity`
+
+The i4 engine exhibit, built on the same runtime components as the eye by
+`Kmax/Engine Exhibit/Set Up Engine Exhibit`.
+
+```
+EngineExhibit          EyeAnatomyController, EyeExplodeView, EyeFocusView, EyeManipulator,
+                       ViewerFlyController, ExhibitAttractMode, AnatomyStylusInput,
+                       ExhibitPostProcessing, ExhibitMachineryGate
+  EngineModelPivot     EyeManipulator's pivot; never scaled
+    Enginei4 (1)       EyeFocusView's modelRoot - scaled and moved to frame a part
+      Enginei4         explode and catalogue root; carries the Enginei4 driver
+  FocusAnchor
+UI                     world-space canvas, 1920x1080 at 0.00017989584 = the virtual screen
+XRRig / EventSystem / Ambience / Audio / PostFX / Key + Fill + Rim Light
+Engine                 the original root - legacy canvas and point light, both disabled
+```
+
+Nothing under `Scripts/Runtime` is eye-specific: every component works off an injected
+catalogue, pose set and model root. The engine needed one addition,
+`ExhibitMachineryGate`, and sixteen build steps on `EyeAnatomySceneUpgrader` made
+`internal` so the engine builder calls them rather than copying them.
+
+### The engine has no animation clips
+
+`Models/Enginei4.FBX` imports with `animationType=None` and no clips. The one
+`Take 001` in `Engine_opt.FBX` is two keyframes over 0.033 s on the root, animating
+rotation and scale only - an empty take, on an FBX the scene does not use. Everything
+that moves is procedural code in `Enginei4.Update`, slaved to a single `RPM` float.
+
+So `EyeAnatomyPoseBaker` has no input here and the teardown is **authored** instead, as
+a direction-and-distance table in `EngineExhibitBuilder.GetTeardown`, written in the
+model's native metres. 19 poses drive 12 catalogued assemblies - the valves travel with
+the camshafts that open them and the plug leads with the plugs, but neither is an
+assembly worth a badge.
+
+> [!IMPORTANT]
+> Offsets are converted root space -> world -> the part's parent space, never applied
+> directly. `EngineBlock` and `CylinderHead` both carry a 270 degree rotation about X,
+> so a local -Y offset on the oil pan sends it out of the *side* of the engine rather
+> than off the bottom. Both conversions run through the same scale chain above the model
+> root, so the exhibit's scale cancels and the table stays in native metres.
+
+### The teardown is re-centred on the origin
+
+An engine does not come apart symmetrically. Far more of it lifts off the top than drops
+out of the bottom, and the gearbox travels half a model-length back, so the authored
+offsets carry the whole model up and back as it opens - measured at 0.046 m up and
+0.049 m back, enough to push the cam cover above a screen only 0.194 m tall while the
+engine was still small enough to fit easily. `ViewerFlyController` orbits `focalCenter`
+and resets it to `Vector3.zero`, so an off-centre teardown orbits empty space.
+
+`SolveTeardownDrift` measures that drift and subtracts it. Two details are load-bearing:
+
+- It **solves** rather than measuring once. The bounds are defined by whichever parts
+  are furthest out, and shifting everything can hand that job to a different part.
+- The correction is applied **only to groups directly under the model root**. It is a
+  rigid shift, so nested steps inherit it through the hierarchy; applying it to a nested
+  step as well moves that part twice - the oil pan once with the block it hangs off and
+  again on its own account - and the solve chases a target it is itself moving.
+
+The cost is that the engine block is no longer a fixed anchor and sinks slightly as the
+engine opens. That buys a teardown that stays in frame and offsets that can be
+re-authored without re-deriving the framing by hand.
+
+Measured: assembled 0.137 x 0.077 x 0.160 m, pulled apart 0.240 x 0.155 x 0.218 m, both
+centred on the origin to four decimals, using 69% of the screen width and 80% of its
+height.
+
+### The machinery freezes while the engine is apart
+
+`ExhibitMachineryGate` disables `Enginei4` on the frame an explode starts and re-enables
+it only once the engine is fully reassembled.
+
+The procedural animation and the explode do not really collide - the driver only writes
+rotations and the local positions of parts *below* the group nodes the explode moves.
+What breaks is the connecting rods: `Rod1..4` aim at targets parented under the pistons,
+so the moment the pistons travel away from the block the rods swing across the gap to
+keep pointing at them.
+
+Freezing also guarantees `Enginei4.Start` - which caches every piston and rod rest
+position - can only run with the engine assembled. Started while apart, it would cache
+the exploded pose as the rest pose.
+
+> [!IMPORTANT]
+> The gate holds the driver as a plain `MonoBehaviour`, not as `Enginei4`. That type is
+> in `Assembly-CSharp`, which already references `KmaxDisplayExample`; naming it here
+> would close a reference cycle and neither assembly would compile. Toggling `enabled`
+> needs no type knowledge.
+
+`EyeExplodeView.TransitionStarted` exists for this. `TransitionCompleted` is too late -
+it fires once the parts have already flown apart.
+
+### The original interface is disabled, not deleted
+
+`Canvas - Engine (1)` is the only wiring for the transparency X-ray over 23 parts, the
+four tuning variations and the twelve part toggles, none of which the exhibit interface
+exposes yet. It is deactivated so that wiring survives.
+
+> [!IMPORTANT]
+> Deactivating it is **not** enough on its own. `Enginei4` writes its parent's local
+> scale from `ZoomSlider` every frame, and a slider on a deactivated object is still a
+> live reference - the null check passes and the write goes ahead. On the first frame of
+> play the wrapper went back to the slider's value of 1 and the pulled-apart engine
+> measured 2.24 m across a screen 0.345 m wide. The builder clears both slider
+> references outright, and `Enginei4.Update` now treats them as optional.
+
+### The interface is pinned, not overlaid
+
+The canvas is world-space and carries the SDK's `UIScaler`, which rewrites its pose and
+size every frame from the rig's screen plane. That is what makes it behave like an
+overlay - square to the viewer, fixed on the panel - while staying geometry both eye
+cameras render.
+
+> [!IMPORTANT]
+> A true `ScreenSpaceOverlay` canvas cannot be used on this rig. `VRRenderer` renders
+> side by side, giving the left eye the viewport `(0, 0, 0.5, 1)` and the right eye
+> `(0.5, 0, 0.5, 1)`; an overlay canvas ignores camera viewports and is drawn once across
+> the whole framebuffer, so it would span both eye images and never fuse.
+>
+> The canvas must also be handed an **event camera**. Left empty, a world-space
+> `GraphicRaycaster` falls back to `Camera.main`, and this rig has none - the SDK
+> disables the rig camera's own `Camera` component and renders through the `left` and
+> `right` sub-cameras it creates at runtime. Without it not one button is clickable, and
+> nothing is logged.
+
+### See-through and build variants
+
+Both belong to `Enginei4` and were reachable only from the canvas it shipped with.
+`ExhibitFeaturePanel` puts them on the exhibit interface, reaching the model through
+`IExhibitMachinery`.
+
+That interface is declared on the exhibit side and implemented on the model side because
+`Enginei4` is in `Assembly-CSharp`, which already references `KmaxDisplayExample` - the
+exhibit can never name that type. It is the heavier sibling of the trick
+`ExhibitMachineryGate` uses, which only needs `enabled` and so can hold a plain
+`MonoBehaviour`.
+
+> [!IMPORTANT]
+> The exhibit calls `ApplyVariation`, never `SetVariation`. The latter returns early
+> unless the matching toggle in `allTogglesType` is on - and those toggles are on the
+> disabled canvas - and it calls `ActivateAllObjects`, which enables every object with a
+> MeshRenderer under the model. The hotspot badges are three MeshRenderers each and are
+> meant to stay hidden until the engine is open, so one variation switch would reveal all
+> twelve.
+
+Focusing a part stands see-through down. `EyeFocusView` ghosts every part except the
+focused one and restores the originals on the way out, so the casing ends up solid
+whatever the panel does - only the flag and the label have to catch up. `FocusChanged`
+exists for this.
+
+Overlapping fades are cancelled. Each part's fade owns that part's material for the ten
+frames it runs, so toggling off and straight back on left the older fade-in finishing
+last and putting the opaque material back while the interface believed otherwise.
+
+### Particles
+
+Systems created from scratch are given `AnatomyMote.mat` explicitly. A `ParticleSystem`
+added by `AddComponent` has no material and Unity draws that as solid magenta; the eye
+never hit it because its scene already had a `MoteField` to clone. `RepairParticleMaterials`
+also fixes any system an earlier run left without one, because every build step finds
+before it creates and would otherwise skip them forever.
+
+### Button colours
+
+Buttons leave their `Image` white and take every colour from their own `ColorBlock`, and
+the selected build variant is marked by writing `normalColor`. A `Selectable` with a
+colour transition drives the target graphic's canvas renderer on each state change, so
+anything written to `Image.color` survives only until the pointer next touches it.
+
+### Lighting
+
+Driven harder than the eye's - key 1.5, fill 0.7, rim 0.95 - because cast iron,
+aluminium and blued steel are far darker and more specular than near-white tissue. The
+rim matters more here than it does on the eye: it is what separates one dark metal part
+from the dark metal part behind it once the engine is open and the silhouettes overlap.
+
 ## SDK backend selection
 
 Both SDKs declare `namespace KmaxXR` and both define `KmaxInputModule`,
@@ -198,6 +395,7 @@ Ten roots:
 | `EyeAnatomyExhibit` | `EyeExplodeView`, `EyeFocusView`, `EyeAnatomyController`, `EyeManipulator`, `ViewerFlyController`, `AnatomyStylusInput`, `ExhibitAttractMode`, `ExhibitPostProcessing` |
 | `Ambience` | `AnatomyParticleDirector` + `MoteField` + `MoteField_Near` + `MoteField_Far` + `MoteField_Foreground` + `FocusBurst` + `PopupRing` + `RiseSparks` |
 | `Audio` | `AnatomyAudioDirector` and its two `AudioSource`s |
+| `EyeScaleBox` | `EyeScaleBox`; builds its frame and four handles at runtime |
 | `Front Fill` / `Specular Point` | two added lights; see **Environment** below |
 
 > [!IMPORTANT]
@@ -326,6 +524,8 @@ whole flow:
 | `ViewerFlyController` | the XRRig root | spherical orbit navigation of the viewer; owns the `R` reset key and `FlyTo` |
 | `AnatomyStylusInput` | the stylus + the fly controller | maps the pen's three buttons onto orbit, reset and dolly; orbit is wrist-turn by default |
 | `ExhibitAttractMode` | the controller + the fly controller | tours the exhibit when idle, and gets out of the way on any input |
+| `EyeScaleBox` | the manipulator + the model bounds | billboarded frame with four drag-to-scale corners |
+| `EyeScaleHandle` | its owning box | one corner; reports hover and drag |
 | `AnatomyStylusBeam` | the stylus | `IPointerVisualize`: draws the beam and places the tip on the hit surface |
 | `EyeAnatomyController` | all of the above + the catalog + the UI | the only class that knows the actual flow |
 | `AnatomyInfoPanel` | two `TextMeshProUGUI` fields | shows a name and description |

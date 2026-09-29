@@ -127,6 +127,45 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         /// <summary>
+        /// The model's current zoom multiplier, as applied to the pivot's scale.
+        /// </summary>
+        public float Zoom {
+            get { return _currentZoom; }
+        }
+
+        public float MinZoom {
+            get { return minZoom; }
+        }
+
+        public float MaxZoom {
+            get { return maxZoom; }
+        }
+
+        /// <summary>
+        /// Sets the model's zoom directly, for the drag handles around the bounding box.
+        ///
+        /// Both the current and target values are written, rather than just the target, because
+        /// <c>ApplySmoothing</c> only runs on the pointer-manipulation path - which is switched off
+        /// while <see cref="ViewerFlyController"/> owns navigation. Setting the target alone would
+        /// therefore never reach the model.
+        ///
+        /// Scale has to go through here rather than straight onto the pivot: <c>ApplyTransform</c>
+        /// rewrites <c>pivot.localScale</c> from this value every frame, so anything written to the
+        /// transform directly is gone by the next one.
+        /// </summary>
+        public void SetZoom(float zoom) {
+            _currentZoom = Mathf.Clamp(zoom, minZoom, maxZoom);
+            _targetZoom = _currentZoom;
+            _zoomVelocity = 0f;
+
+            // Re-base a reset that happens to be animating, so grabbing a handle mid-reset does not
+            // fight it for the remainder of the animation.
+            _resetFromZoom = _currentZoom;
+
+            ApplyTransform();
+        }
+
+        /// <summary>
         /// Sets a custom focal point in world space (e.g. when inspecting a focused part).
         /// Rotation will orbit around this point.
         /// </summary>

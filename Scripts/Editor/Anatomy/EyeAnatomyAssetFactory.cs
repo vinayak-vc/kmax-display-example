@@ -15,12 +15,13 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         private const string ModuleRoot = "Assets/Games/kmax-display-example";
         private const string MaterialsFolder = ModuleRoot + "/Materials";
         private const string ModelFolder = ModuleRoot + "/Model";
-        private const string MoteMaterialPath = MaterialsFolder + "/AnatomyMote.mat";
+        internal const string MoteMaterialPath = MaterialsFolder + "/AnatomyMote.mat";
 
         public const string BeamMaterialPath = MaterialsFolder + "/StylusBeam.mat";
         public const string TipMaterialPath = MaterialsFolder + "/StylusTip.mat";
         public const string TipMeshPath = ModelFolder + "/StylusTip.asset";
         public const string FocusHighlightMaterialPath = MaterialsFolder + "/FocusHighlight.mat";
+        public const string ScaleHandleMaterialPath = MaterialsFolder + "/ScaleHandle.mat";
         public const string EnvironmentSkyboxPath = MaterialsFolder + "/AnatomyEnvironment.mat";
 
         /// <summary>
@@ -159,6 +160,14 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
 
             EditorUtility.SetDirty(material);
             return material;
+        }
+
+        /// <summary>
+        /// Additive material for the scale box's corner handles. Tinted per-frame through a
+        /// property block, so the colour set here only matters before the first frame.
+        /// </summary>
+        public static Material GetOrCreateScaleHandleMaterial() {
+            return GetOrCreateMoteVariant(ScaleHandleMaterialPath, new Color(0.62f, 0.88f, 1f, 1f), false);
         }
 
         /// <summary>

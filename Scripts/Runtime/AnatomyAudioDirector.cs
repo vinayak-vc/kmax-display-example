@@ -21,11 +21,13 @@ namespace ViitorCloud.KmaxDisplayExample {
 
         [Header("Levels")]
         [SerializeField, Range(0f, 1f), Tooltip("Level the background pad settles at.")]
-        private float musicVolume = 0.16f;
+        private float musicVolume = 0.45f;
         [SerializeField, Range(0f, 1f), Tooltip("Level interface cues play at.")]
         private float sfxVolume = 0.45f;
-        [SerializeField, Tooltip("Seconds the pad takes to fade up when the exhibit starts.")]
-        private float musicFadeInDuration = 3.5f;
+        [SerializeField, Tooltip("Seconds the pad takes to fade up when the exhibit starts. Long " +
+            "enough not to announce itself, short enough that someone checking whether there is " +
+            "music at all does not conclude there is none.")]
+        private float musicFadeInDuration = 1.5f;
         [SerializeField, Tooltip("Start the pad automatically. Turn off for a silent kiosk.")]
         private bool playMusicOnStart = true;
 
@@ -38,8 +40,11 @@ namespace ViitorCloud.KmaxDisplayExample {
         [Header("Music")]
         [SerializeField, Tooltip("Override for the background pad. Synthesised when empty.")]
         private AudioClip musicOverride;
-        [SerializeField, Tooltip("Root note of the synthesised pad in hertz. 110 is a low A.")]
-        private float padRootHz = 110f;
+        [SerializeField, Tooltip("Root note of the synthesised pad in hertz. Deliberately not down at " +
+            "110: a low A is below what a display's own panel speakers reproduce, so the pad was " +
+            "playing correctly and simply could not be heard. 196 is a G below middle C, which puts " +
+            "the whole chord in a band small speakers actually carry.")]
+        private float padRootHz = 196f;
         [SerializeField, Tooltip("Loop length of the synthesised pad in seconds. Longer costs memory.")]
         private float padLoopSeconds = 16f;
 

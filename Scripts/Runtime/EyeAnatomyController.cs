@@ -49,6 +49,10 @@ namespace ViitorCloud.KmaxDisplayExample {
         [SerializeField, Tooltip("Gap in metres between a part's front face and its marker. Markers are " +
             "depth-tested, so they sit in front of the part's nearest surface rather than at its centre.")]
         private float hotspotFrontGap = 0.008f;
+        [SerializeField, Tooltip("Float each marker clear of the whole model rather than just in front " +
+            "of its own part. For a model that comes apart, off. For one that does not - a car, whose " +
+            "grille marker would otherwise sit inside the bumper - on.")]
+        private bool hotspotsOutsideModel;
 
         [Header("Direct Picking")]
         [SerializeField, Tooltip("Fit colliders to the model so the stylus beam stops on the eye and " +
@@ -402,6 +406,62 @@ namespace ViitorCloud.KmaxDisplayExample {
             }
         }
 
+        /// <summary>
+        /// Where a part's badge floats.
+        ///
+        /// By default it sits just in front of the part's own front face, which is right for a model
+        /// that comes apart: once it is open every part has clear air in front of it, and a badge
+        /// there reads as belonging to that part rather than to the shell it was inside.
+        ///
+        /// A model that never comes apart has no such air. On the car, a badge in front of the
+        /// grille is a badge inside the front bumper. <paramref name="outside"/> pushes it out to
+        /// the model's own silhouette instead, along the line from the model's centre through the
+        /// part's - which puts the wheels' badge beside the arch, the sunroof's above the roof and
+        /// the tailpipes' behind the car, whichever way the viewer has orbited to.
+        /// </summary>
+        private Vector3 HotspotPosition(Bounds partBounds, Bounds modelBounds, bool outside) {
+            if (!outside) {
+                // The viewer looks along +Z, so the part's front face is at its bounds minimum.
+                return new Vector3(
+                    partBounds.center.x,
+                    partBounds.center.y,
+                    partBounds.min.z - hotspotFrontGap - hotspotWorldRadius);
+            }
+
+            Vector3 direction = partBounds.center - modelBounds.center;
+
+            // A part sitting on the model's own centre gives no direction to push along, so it
+            // falls back to the viewer's side of the model.
+            if (direction.sqrMagnitude <= Mathf.Epsilon) {
+                direction = Vector3.back;
+            } else {
+                direction.Normalize();
+            }
+
+            float surface = DistanceToSurface(modelBounds.extents, direction);
+            return modelBounds.center + direction * (surface + hotspotFrontGap + hotspotWorldRadius);
+        }
+
+        /// <summary>
+        /// How far a box of the given half-size reaches from its centre along one direction: the
+        /// nearest of the three slabs the ray leaves through.
+        /// </summary>
+        private static float DistanceToSurface(Vector3 extents, Vector3 direction) {
+            float distance = AxisDistance(extents.x, direction.x);
+            distance = Mathf.Min(distance, AxisDistance(extents.y, direction.y));
+            distance = Mathf.Min(distance, AxisDistance(extents.z, direction.z));
+            return float.IsInfinity(distance) ? 0f : distance;
+        }
+
+        private static float AxisDistance(float extent, float component) {
+            float magnitude = Mathf.Abs(component);
+            if (magnitude <= Mathf.Epsilon) {
+                return float.PositiveInfinity;
+            }
+
+            return extent / magnitude;
+        }
+
         private void BuildHotspots() {
             EyePartDefinition[] definitions = catalog.Parts;
             hotspots = new EyeHotspot[definitions.Length];
@@ -413,6 +473,15 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             Camera activeCamera = ResolveActiveCamera();
             EyePartColliders.Result colliderResult = new EyePartColliders.Result();
+
+            // Measured before the first badge is parented in, so it describes the model alone.
+            Bounds modelBounds;
+            bool hasModelBounds = EyePartBounds.TryGet(modelRoot, out modelBounds);
+            if (hotspotsOutsideModel && !hasModelBounds) {
+                Debug.LogWarning($"{nameof(EyeAnatomyController)} found no renderer under '{modelRoot.name}', " +
+                    $"so {nameof(hotspotsOutsideModel)} has nothing to measure; markers fall back to their " +
+                    "own part's front face.", this);
+            }
 
             for (int i = 0; i < definitions.Length; i++) {
                 Transform part = modelRoot.Find(definitions[i].PartPath);
@@ -445,11 +514,8 @@ namespace ViitorCloud.KmaxDisplayExample {
                 EyeHotspot hotspot = Instantiate(hotspotPrefab, part, false);
                 hotspot.name = "Hotspot_" + definitions[i].DisplayName;
 
-                // The viewer looks along +Z, so the part's front face is at its bounds minimum.
-                hotspot.transform.position = new Vector3(
-                    worldBounds.center.x,
-                    worldBounds.center.y,
-                    worldBounds.min.z - hotspotFrontGap - hotspotWorldRadius);
+                hotspot.transform.position = HotspotPosition(worldBounds, modelBounds,
+                    hotspotsOutsideModel && hasModelBounds);
 
                 // The badge holds this size itself from here on, counter-scaling whenever the
                 // model is scaled up to frame a part.

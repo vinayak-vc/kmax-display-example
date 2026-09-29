@@ -75,10 +75,11 @@ namespace ViitorCloud.KmaxDisplayExample {
         private float tapMaxDuration = 0.6f;
 
         [Header("Feedback")]
-        [SerializeField, Range(0, 100), Tooltip("Pen vibration strength when a reset tap is accepted.")]
-        private int resetVibrationStrength = 40;
+        [SerializeField, Range(0, 100), Tooltip("Pen vibration strength when a reset tap is accepted. " +
+            "Stronger than the hover tick because it confirms a deliberate action, but still gentle.")]
+        private int resetVibrationStrength = 18;
         [SerializeField, Tooltip("Pen vibration duration in seconds for a reset tap.")]
-        private float resetVibrationDuration = 0.05f;
+        private float resetVibrationDuration = 0.035f;
 
         private bool _isOrbitPressed;
         private bool _isOrbiting;
@@ -138,6 +139,14 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         private void UpdateOrbit() {
+            // Same reasoning as the mouse path: a press on a scale handle is for that handle.
+            if (EyeScaleBox.SuppressViewDrag) {
+                _isOrbitPressed = false;
+                _isOrbiting = false;
+                _orbitSuppressed = false;
+                return;
+            }
+
             bool held = stylus.GetButton(orbitButton);
 
             if (!held) {

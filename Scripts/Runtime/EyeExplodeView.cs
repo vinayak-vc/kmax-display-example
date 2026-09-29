@@ -26,6 +26,16 @@ namespace ViitorCloud.KmaxDisplayExample {
         public event Action<bool> TransitionCompleted;
 
         /// <summary>
+        /// Raised the moment a transition is asked for, before any part has moved. The argument is
+        /// true when the model is about to open.
+        ///
+        /// <see cref="TransitionCompleted"/> is too late for anything that has to stop before the
+        /// parts separate - a model with its own animation driver has to be halted on the way out,
+        /// not once the parts have already flown apart around it.
+        /// </summary>
+        public event Action<bool> TransitionStarted;
+
+        /// <summary>
         /// True as soon as an opening transition starts, false as soon as a closing one does.
         /// </summary>
         public bool IsExpanded {
@@ -63,6 +73,10 @@ namespace ViitorCloud.KmaxDisplayExample {
         public void SetExpanded(bool expanded) {
             targetExpansion = expanded ? 1f : 0f;
             isTransitioning = !Mathf.Approximately(expansion, targetExpansion);
+
+            if (TransitionStarted != null) {
+                TransitionStarted(IsExpanded);
+            }
 
             if (isTransitioning) {
                 return;

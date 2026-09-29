@@ -53,14 +53,20 @@ namespace ViitorCloud.KmaxDisplayExample {
         [Header("Haptics")]
         [SerializeField, Tooltip("Pulse the pen when the ray moves onto a new object.")]
         private bool vibrateOnHitEnter = true;
-        [SerializeField, Range(0, 100), Tooltip("Vibration strength, 0 to 100.")]
-        private int hitVibrationStrength = 22;
+        [SerializeField, Range(0, 100), Tooltip("Vibration strength, 0 to 100. Kept low: this fires " +
+            "as feedback, not as an alert, and the pen is held against the fingertips.")]
+        private int hitVibrationStrength = 8;
         [SerializeField, Tooltip("Vibration duration in seconds.")]
-        private float hitVibrationDuration = 0.02f;
+        private float hitVibrationDuration = 0.015f;
+        [SerializeField, Tooltip("Minimum seconds between pulses. Every structure carries its own " +
+            "collider, so sweeping the beam across the eye crosses a boundary every few frames - " +
+            "without a floor here the pen buzzes continuously rather than ticking on arrival.")]
+        private float minVibrationInterval = 0.25f;
 
         private KmaxStylus _stylus;
         private MaterialPropertyBlock _propertyBlock;
         private GameObject _lastHitObject;
+        private float _lastVibrationTime = -1f;
         private Color _currentColor;
         private float _tipScaleProgress;
         private float _originalRayLength = 1f;
@@ -220,9 +226,16 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             _lastHitObject = hit;
 
-            if (vibrateOnHitEnter && hit != null) {
-                _stylus.VibrationOnce(hitVibrationDuration, hitVibrationStrength);
+            if (!vibrateOnHitEnter || hit == null) {
+                return;
             }
+
+            if (Time.unscaledTime - _lastVibrationTime < minVibrationInterval) {
+                return;
+            }
+
+            _lastVibrationTime = Time.unscaledTime;
+            _stylus.VibrationOnce(hitVibrationDuration, hitVibrationStrength);
         }
     }
 }

@@ -2,6 +2,25 @@
 
 ## Done
 
+- [x] **Volvo S90 exhibit**: four doors cut from their mirrored meshes and hinged, plus
+      sunroof; seven lamp channels; a staged ignition with synthesised
+      start and idle audio; glass made transparent. 6.5M triangles across both eyes runs
+      at 105-164 fps on an RTX 3060, so no decimation was needed.
+
+- [x] **Expose the engine's see-through view and its four build variants** on the
+      exhibit interface, through `IExhibitMachinery` / `ExhibitFeaturePanel`.
+- [x] Fix the magenta particles, the floating canvas and the unclickable interface that
+      the first engine build shipped with.
+
+- [x] **Convert `CarEngineAnimated - i4/VirtualExhibition WR.unity` to the exhibit
+      stack.** Same runtime components as the eye; 19 authored teardown poses over 12
+      catalogued assemblies, XR rig, stylus, colliders, world-space UI and attract tour.
+      `Kmax/Engine Exhibit/Set Up Engine Exhibit` authors all of it.
+- [x] Re-centre the engine teardown on the origin the rig orbits, solved rather than
+      hand-tuned, so the offsets can be re-authored without re-deriving the framing.
+- [x] Freeze the engine's procedural animation while it is pulled apart, so the
+      connecting rods stop chasing pistons that are no longer there.
+
 - [x] Vendor Kmax XR Core 2.5.2 and Kmax AIO K1 1.2.0 into the writable module.
 - [x] Resolve the five GUID collisions between the two SDKs.
 - [x] Make the two SDKs mutually exclusive via the `KMAX_AIO_K1` constraint.
@@ -51,7 +70,39 @@
       instead of sitting at zero parallax inside the panel.
 - [x] **Wrist turn** - the pen rotates the view one for one instead of by pixels.
 
+- [x] **Drag-to-scale bounding box** - billboarded frame with four corner handles.
+- [x] Fixed mouse orbit being suppressed over the model, a regression from adding
+      mesh colliders plus a physics raycaster.
+- [x] Softened and rate-limited the stylus vibration (device feedback).
+- [x] Moved the pad off a 110 Hz root so panel speakers can reproduce it, and raised
+      its level (device feedback).
+
 ## Next
+
+- [ ] **Volvo interior focus.** A catalogue entry bounded on the cabin plus a ghost over
+      shell, roof and glass. Note the camera cannot fly into the cabin - at exhibit scale
+      it is smaller than the fly controller minimum distance - so this is a focus-and-ghost,
+      the same way the eye frames a structure.
+- [ ] **Volvo paint and interior trim swatches.** `Car Paint` is one material, and the
+      interior ships Black / Blue / Brown / Tan textures for dash, console, door panels
+      and seats. Reuse `ExhibitFeaturePanel` / `IExhibitMachinery` rather than rebuilding.
+- [ ] **Volvo guided tour**: catalogue, hotspots, navigator and attract mode, all of which
+      are already model agnostic.
+- [ ] Move `Volvo S90.blend` out of `Assets/`. It is 626 MB, Unity has failed to import it
+      and retries on every refresh, which launches Blender headlessly against a file that
+      is open.
+
+- [ ] Put the twelve per-part toggles somewhere, or decide they are redundant. They are
+      the last feature still stranded on the disabled canvas, and they are a different
+      shape from the other two - twelve booleans rather than one state - so they want a
+      list rather than twelve more buttons down the edge. Worth asking whether hiding a
+      part still earns its place now that the engine pulls apart.
+- [ ] Look at the 0.20-alpha see-through casing **in stereo**. A translucent shell in
+      front of solid internals is exactly the kind of surface that is hard to fuse, and
+      it has only been judged flat.
+- [ ] Decide whether the four missing prefabs in the engine scene (`Small_Room_02`,
+      `FlatScreenTV`, `_Level`, four `FAQ Object` instances) should be restored or
+      stripped. They are inert but they log on every scene open.
 
 - [ ] **Exercise the stylus on Kmax hardware.** The scene side is verified, but
       `KmaxStylus.Visible` is false without a tracked pen, so the beam, the tip, all
@@ -59,6 +110,11 @@
       wake are all still unexercised. ai_handoff.md lists the settings most likely
       to need a tweak. If the wrist turn feels reversed, flip `invertWristTurn`; if
       it feels heavy, lower `wristTurnGain`.
+- [ ] **Confirm the audio and vibration on the device.** Both were changed in
+      response to device feedback and both were measured in the editor - dominant pad
+      energy at ~414 Hz, vibration capped to one pulse per 0.25 s - but a measurement
+      of the signal is not a judgement of how it feels in the room. If the pad is
+      still thin, raise `padRootHz` further rather than the volume.
 - [ ] **Tune the pop-out against a real viewer.** 0.10 m was chosen on geometry, not
       on comfort. Too much pop-out causes eye strain over a long session, and the
       right number depends on the panel and the viewing distance.

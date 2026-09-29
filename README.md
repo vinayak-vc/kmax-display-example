@@ -29,6 +29,7 @@ The exhibit presents an anatomically accurate human eye in full stereoscopic dep
 - **Direct Structure Picking**: Mesh colliders are fitted to every catalogued structure, so pointing at the sclera selects the sclera. The beam stops on the eye instead of passing through it.
 - **Next / Back Structure Navigator**: Steps through all 18 structures with the camera flying to a viewpoint on each one's own side of the eye. This reaches the nested structures whose badges are occluded from most angles and were previously unselectable.
 - **Self-Demonstrating Attract Loop**: After 30 seconds without input the eye opens itself and tours all 18 structures, the camera flying to each and drifting gently between, with an invitation to take over. Any input &mdash; mouse, key, scroll, pen button or a deliberate pen movement &mdash; hands control straight back, and deliberately leaves the view where the tour reached rather than snapping home.
+- **Drag-to-Scale Bounding Box**: A billboarded frame with four corner handles surrounds the eye; drag any corner to scale the model uniformly. The frame hugs the silhouette from whatever angle you are viewing, tracks the model at any scale, and hides while a part is focused. **Reset View** restores the scale along with rotation and pan.
 - **True Stereo Pop-Out**: A focused structure floats **0.10 m in front of the display glass** rather than sitting at zero parallax inside the panel. Content at zero parallax reads like any other screen; only content in front of it reads as reaching out of the box.
 - **Layered 3D Stereoscopic Ambience**: Four mote layers at different depths - well in front of, just in front of, on, and behind the zero-parallax plane - so the volume reads as genuinely deep rather than as one flat sheet of sparkle. The whole field swells briefly whenever something is selected.
 - **Interface That Is Never Occluded**: The world-space canvas is taken out of the depth test, so the info panel keeps its text even when a structure is scaled up in front of it. The canvas sits 0.5 m from the viewer while the camera orbits 0.42 m from the model, so without this the anatomy routinely cuts across the UI.
@@ -185,6 +186,8 @@ Assets/Games/kmax-display-example/
 │       ├── EyePartBounds.cs           # Accurate mesh bounds calculator
 │       ├── EyePartColliders.cs        # Fits mesh colliders (box fallback) to a structure
 │       ├── EyePartPicker.cs           # Makes a structure's own geometry selectable
+│       ├── EyeScaleBox.cs             # Bounding frame + 4 drag-to-scale corner handles
+│       ├── EyeScaleHandle.cs          # One draggable corner
 │       ├── ExhibitAttractMode.cs      # Idle tour that demonstrates the exhibit to an empty room
 │       ├── ExhibitPostProcessing.cs   # Enables post-FX + HDR on the runtime stereo cameras
 │       ├── ProceduralAudio.cs         # Synthesises the pad and the interface cues

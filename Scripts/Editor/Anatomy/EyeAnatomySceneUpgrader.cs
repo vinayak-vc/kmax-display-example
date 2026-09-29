@@ -21,12 +21,13 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
     public static class EyeAnatomySceneUpgrader {
         private const string MenuPath = "Kmax/Eye Anatomy/Set Up Interaction Upgrades";
         private const string ScenePath = "Assets/Games/kmax-display-example/Scenes/EyeAnatomy.unity";
-        private const string HotspotPrefabPath = "Assets/Games/kmax-display-example/Prefabs/EyeHotspot.prefab";
+        internal const string HotspotPrefabPath = "Assets/Games/kmax-display-example/Prefabs/EyeHotspot.prefab";
         private const string HaloName = "SelectionHalo";
-        private const string GhostMaterialPath = "Assets/Games/kmax-display-example/Materials/EyeGhost.mat";
+        internal const string GhostMaterialPath = "Assets/Games/kmax-display-example/Materials/EyeGhost.mat";
         private const string ForwardRendererPath = "Assets/Games/kmax-display-example/URPAssets/URPAsset_ForwardRenderer.asset";
-        private const string VolumeProfilePath = "Assets/Games/kmax-display-example/URPAssets/AnatomyPostFX.asset";
+        internal const string VolumeProfilePath = "Assets/Games/kmax-display-example/URPAssets/AnatomyPostFX.asset";
         private const string PostFxName = "PostFX";
+        private const string ScaleBoxName = "EyeScaleBox";
 
         private const string PenName = "AnatomyPen";
         private const string StylusName = "Stylus";
@@ -75,6 +76,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             UpgradePostProcessing(rig, exhibit);
             UpgradeLighting();
             UpgradeFocusView(exhibit);
+            UpgradeScaleBox(exhibit);
             UpgradeCanvasDepth(ui);
 
             KmaxStylus stylus = BuildStylus(rig, camera);
@@ -114,7 +116,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// keeps working exactly as before, and adds the pass over every registered
         /// <see cref="KmaxPointer"/> that turns the pen into a real pointer.
         /// </summary>
-        private static void UpgradeEventSystem(GameObject eventSystem) {
+        internal static void UpgradeEventSystem(GameObject eventSystem) {
             if (eventSystem.GetComponent<KmaxInputModule>() != null) {
                 return;
             }
@@ -132,7 +134,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// The event camera needs a physics raycaster for 3D pointer events, and the scene needs
         /// exactly one audio listener - on the camera, so it travels with the viewer.
         /// </summary>
-        private static void UpgradeCamera(Camera camera) {
+        internal static void UpgradeCamera(Camera camera) {
             if (camera.GetComponent<BaseRaycaster>() == null) {
                 Undo.AddComponent<KmaxPhysicRaycaster>(camera.gameObject);
             }
@@ -150,7 +152,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// <c>GetComponent</c> on the transform assigned to its <c>stylus</c> field, so the beam
         /// script has to live on that child and not on the pen root.
         /// </summary>
-        private static KmaxStylus BuildStylus(GameObject rig, Camera camera) {
+        internal static KmaxStylus BuildStylus(GameObject rig, Camera camera) {
             GameObject pen = FindOrCreateChild(rig.transform, PenName);
             GameObject stylusObject = FindOrCreateChild(pen.transform, StylusName);
             GameObject beamObject = FindOrCreateChild(stylusObject.transform, BeamName);
@@ -217,7 +219,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// the middle and what reads is a ring pinging outward. The field is optional on the
         /// component, so a prefab without it still works - this only adds the flourish.
         /// </summary>
-        private static void UpgradeHotspotPrefab() {
+        internal static void UpgradeHotspotPrefab() {
             GameObject contents = PrefabUtility.LoadPrefabContents(HotspotPrefabPath);
             if (contents == null) {
                 Debug.LogWarning($"{nameof(EyeAnatomySceneUpgrader)} could not open '{HotspotPrefabPath}'; " +
@@ -272,7 +274,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// from two different poses. The SDK's own <c>pen.prefab</c> being dropped into the scene
         /// alongside this one is the easy way to end up there.
         /// </summary>
-        private static void RemoveDuplicatePens(GameObject rig) {
+        internal static void RemoveDuplicatePens(GameObject rig) {
             KmaxStylus[] pens = rig.GetComponentsInChildren<KmaxStylus>(true);
             int removed = 0;
 
@@ -303,7 +305,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// milky haze that flattens the whole model. This is the point where the grey reads as grey
         /// and the anatomy still has contrast to sit against.
         /// </summary>
-        private static void UpgradeEnvironment() {
+        internal static void UpgradeEnvironment() {
             Material skybox = EyeAnatomyAssetFactory.GetOrCreateEnvironmentSkybox();
             if (skybox != null) {
                 RenderSettings.skybox = skybox;
@@ -393,7 +395,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// defaults them to <c>renderPostProcessing = false</c> and every volume in the scene is
         /// skipped. <see cref="ExhibitPostProcessing"/> configures them once they exist.
         /// </summary>
-        private static void UpgradePostProcessing(GameObject rig, GameObject exhibit) {
+        internal static void UpgradePostProcessing(GameObject rig, GameObject exhibit) {
             VolumeProfile profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(VolumeProfilePath);
             if (profile == null) {
                 profile = ScriptableObject.CreateInstance<VolumeProfile>();
@@ -458,7 +460,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// Measured before and after: mean luminance with every light on versus every light off
         /// differed by 0.0000 under the 2D renderer and by 0.0443 under this one.
         /// </summary>
-        private static void UpgradeRenderPipeline() {
+        internal static void UpgradeRenderPipeline() {
             UniversalRenderPipelineAsset urp =
                 UnityEngine.Rendering.GraphicsSettings.defaultRenderPipeline as UniversalRenderPipelineAsset;
             if (urp == null) {
@@ -503,7 +505,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
                 "was actually being lit. Light intensities are calibrated for the corrected renderer.", urp);
         }
 
-        private static void SetLightIntensity(string name, float intensity) {
+        internal static void SetLightIntensity(string name, float intensity) {
             GameObject root = FindRoot(name);
             if (root == null) {
                 return;
@@ -518,7 +520,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             EditorUtility.SetDirty(light);
         }
 
-        private static Light EnsureLight(string name, LightType type) {
+        internal static Light EnsureLight(string name, LightType type) {
             GameObject existing = FindRoot(name);
             if (existing == null) {
                 existing = new GameObject(name);
@@ -552,13 +554,44 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         }
 
         /// <summary>
+        /// Adds the bounding frame and its four drag-to-scale corners around the model.
+        ///
+        /// Scale is driven through <see cref="EyeManipulator"/> rather than applied to the pivot,
+        /// because the manipulator rewrites the pivot's scale from its own zoom every frame. Going
+        /// through it also means Reset View restores the scale along with everything else.
+        /// </summary>
+        private static void UpgradeScaleBox(GameObject exhibit) {
+            GameObject host = FindRoot(ScaleBoxName);
+            if (host == null) {
+                host = new GameObject(ScaleBoxName);
+                Undo.RegisterCreatedObjectUndo(host, "Create " + ScaleBoxName);
+            }
+
+            GameObject pivot = FindRoot("EyeModelPivot");
+            if (pivot == null) {
+                Debug.LogWarning($"{nameof(EyeAnatomySceneUpgrader)} found no EyeModelPivot; the scale " +
+                    "handles were not set up.");
+                return;
+            }
+
+            EyeScaleBox box = GetOrAdd<EyeScaleBox>(host);
+            SerializedObject so = new SerializedObject(box);
+            SetIfPresent(so, "manipulator", exhibit.GetComponent<EyeManipulator>());
+            SetIfPresent(so, "boundsSource", pivot.transform);
+            SetIfPresent(so, "focusView", exhibit.GetComponent<EyeFocusView>());
+            SetIfPresent(so, "frameMaterial", EyeAnatomyAssetFactory.GetOrCreateBeamMaterial());
+            SetIfPresent(so, "handleMaterial", EyeAnatomyAssetFactory.GetOrCreateScaleHandleMaterial());
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>
         /// Takes the interface out of the depth test so the anatomy can never cover it.
         /// </summary>
         private static void UpgradeCanvasDepth(GameObject ui) {
             GetOrAdd<UiAlwaysOnTop>(ui);
         }
 
-        private static AnatomyAudioDirector BuildAudio() {
+        internal static AnatomyAudioDirector BuildAudio() {
             GameObject root = FindRoot(AudioRootName);
             if (root == null) {
                 root = new GameObject(AudioRootName);
@@ -575,7 +608,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// a flat backdrop on a stereo display however good the stereo is, and it is the parallax
         /// between layers at different depths that makes the box look like it has a volume in it.
         /// </summary>
-        private static AnatomyParticleDirector UpgradeParticles(GameObject ambience) {
+        internal static AnatomyParticleDirector UpgradeParticles(GameObject ambience) {
             AnatomyParticleDirector director = GetOrAdd<AnatomyParticleDirector>(ambience);
             ParticleSystem source = FindChildComponent<ParticleSystem>(ambience.transform, "MoteField");
 
@@ -610,7 +643,39 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             so.FindProperty("riseSparks").objectReferenceValue = sparks;
             so.ApplyModifiedPropertiesWithoutUndo();
 
+            RepairParticleMaterials(ambience);
             return director;
+        }
+
+        /// <summary>
+        /// Gives a material to any particle system under the ambience root that has none.
+        ///
+        /// The creation path above only assigns one to systems it creates, and every step here
+        /// finds before it creates - so a system left without a material by an earlier run would
+        /// keep rendering as solid magenta through every re-run. This repairs those in place.
+        /// </summary>
+        private static void RepairParticleMaterials(GameObject ambience) {
+            Material mote = AssetDatabase.LoadAssetAtPath<Material>(EyeAnatomyAssetFactory.MoteMaterialPath);
+            if (mote == null) {
+                return;
+            }
+
+            int repaired = 0;
+            ParticleSystemRenderer[] renderers = ambience.GetComponentsInChildren<ParticleSystemRenderer>(true);
+            for (int i = 0; i < renderers.Length; i++) {
+                if (renderers[i].sharedMaterial != null) {
+                    continue;
+                }
+
+                renderers[i].sharedMaterial = mote;
+                EditorUtility.SetDirty(renderers[i]);
+                repaired++;
+            }
+
+            if (repaired > 0) {
+                Debug.Log($"{nameof(EyeAnatomySceneUpgrader)} gave {repaired} particle system(s) the mote " +
+                    "material; they had none and were rendering magenta.");
+            }
         }
 
         private enum ShapeType { Ring, Rise }
@@ -717,6 +782,19 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
                 created = new GameObject(name);
                 created.transform.SetParent(parent, false);
                 created.AddComponent<ParticleSystem>();
+
+                // A ParticleSystem added from scratch has no material, and Unity draws a null
+                // material as solid magenta. The eye never reaches this branch because its scene
+                // already has a MoteField to clone; a scene without one filled the view with
+                // magenta squares until this was here.
+                ParticleSystemRenderer renderer = created.GetComponent<ParticleSystemRenderer>();
+                Material mote = AssetDatabase.LoadAssetAtPath<Material>(EyeAnatomyAssetFactory.MoteMaterialPath);
+                if (mote != null) {
+                    renderer.sharedMaterial = mote;
+                } else {
+                    Debug.LogError($"{nameof(EyeAnatomySceneUpgrader)} could not load '{EyeAnatomyAssetFactory.MoteMaterialPath}', " +
+                        $"so '{name}' has no material and will render magenta.");
+                }
             }
 
             created.name = name;
@@ -872,7 +950,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             }
         }
 
-        private static void AddMotion(GameObject target, bool idlePulse) {
+        internal static void AddMotion(GameObject target, bool idlePulse) {
             UiButtonMotion motion = GetOrAdd<UiButtonMotion>(target);
             SerializedObject so = new SerializedObject(motion);
             so.FindProperty("idlePulse").boolValue = idlePulse;
@@ -929,7 +1007,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             inputSo.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static void SetIfPresent(SerializedObject so, string fieldName, Object value) {
+        internal static void SetIfPresent(SerializedObject so, string fieldName, Object value) {
             SerializedProperty property = so.FindProperty(fieldName);
             if (property == null) {
                 Debug.LogWarning($"{nameof(EyeAnatomySceneUpgrader)} found no field '{fieldName}' on {so.targetObject.GetType().Name}.");
@@ -939,7 +1017,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             property.objectReferenceValue = value;
         }
 
-        private static void ClearPersistentCalls(Button button) {
+        internal static void ClearPersistentCalls(Button button) {
             SerializedObject so = new SerializedObject(button);
             SerializedProperty calls = so.FindProperty("m_OnClick.m_PersistentCalls.m_Calls");
             if (calls != null) {
@@ -959,7 +1037,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             return null;
         }
 
-        private static Camera FindRigCamera(GameObject rig) {
+        internal static Camera FindRigCamera(GameObject rig) {
             Camera[] cameras = rig.GetComponentsInChildren<Camera>(true);
             for (int i = 0; i < cameras.Length; i++) {
                 // The SDK spawns 'left' and 'right' sub-cameras under the root camera at runtime and
@@ -972,7 +1050,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             return cameras.Length > 0 ? cameras[0] : null;
         }
 
-        private static GameObject FindOrCreateChild(Transform parent, string name) {
+        internal static GameObject FindOrCreateChild(Transform parent, string name) {
             Transform existing = parent.Find(name);
             if (existing != null) {
                 return existing.gameObject;
@@ -984,7 +1062,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             return created;
         }
 
-        private static T FindChildComponent<T>(Transform parent, string name) where T : Component {
+        internal static T FindChildComponent<T>(Transform parent, string name) where T : Component {
             T[] found = parent.GetComponentsInChildren<T>(true);
             for (int i = 0; i < found.Length; i++) {
                 if (found[i].name == name) {
@@ -995,7 +1073,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             return null;
         }
 
-        private static T GetOrAdd<T>(GameObject target) where T : Component {
+        internal static T GetOrAdd<T>(GameObject target) where T : Component {
             T existing = target.GetComponent<T>();
             return existing != null ? existing : Undo.AddComponent<T>(target);
         }

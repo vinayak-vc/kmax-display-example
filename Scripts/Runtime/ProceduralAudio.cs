@@ -41,13 +41,16 @@ namespace ViitorCloud.KmaxDisplayExample {
             if (voices == null) {
                 // Root, fifth, octave, ninth and twelfth: open and unresolved, so it never sounds
                 // like it is about to end - which matters for something playing all day.
+                // Weighted towards the upper partials rather than the root. Most of a pad's warmth
+                // lives in the fundamental, but a display's panel speakers roll that away entirely -
+                // so the octave and the fifth above it carry the chord and the root only colours it.
                 voices = new PadVoice[] {
-                    new PadVoice(1.00f, 0.50f, 0f, -0.15f),
+                    new PadVoice(1.00f, 0.30f, 0f, -0.15f),
                     new PadVoice(1.50f, 0.34f, +4f, 0.35f),
-                    new PadVoice(2.00f, 0.26f, -3f, -0.40f),
-                    new PadVoice(2.25f, 0.16f, +6f, 0.55f),
-                    new PadVoice(3.00f, 0.13f, -5f, -0.60f),
-                    new PadVoice(4.00f, 0.07f, +7f, 0.25f)
+                    new PadVoice(2.00f, 0.38f, -3f, -0.40f),
+                    new PadVoice(2.25f, 0.22f, +6f, 0.55f),
+                    new PadVoice(3.00f, 0.24f, -5f, -0.60f),
+                    new PadVoice(4.00f, 0.15f, +7f, 0.25f)
                 };
             }
 
@@ -210,6 +213,122 @@ namespace ViitorCloud.KmaxDisplayExample {
             ApplyFadeIn(data, sampleRate, 0.003f);
             NormalisePeak(data, 0.7f);
             return ToClip("AnatomyThud", data, 1, sampleRate);
+        }
+
+        /// <summary>
+        /// A seamless four-cylinder idle loop.
+        ///
+        /// Built from the firing rate rather than from an engine note: a four-stroke four fires
+        /// twice per revolution, so an idle around 780 rpm puts a combustion pulse every 26 Hz, and
+        /// that pulse train is what the ear identifies as a particular engine. Each event is a
+        /// sharp attack decaying exponentially, gating both a harmonic stack for the body of the
+        /// note and filtered noise for the rasp in the exhaust.
+        ///
+        /// The noise is generated once per firing cycle and replayed for every cycle, which is both
+        /// truer - each combustion event really is much like the last - and what makes the clip
+        /// loop without a click, since every component is then periodic at the firing rate.
+        /// </summary>
+        public static AudioClip CreateEngineIdle(float firingHz = 26f, float loopSeconds = 2f) {
+            int sampleRate = GetSampleRate();
+            float snapped = SnapToLoop(firingHz, loopSeconds);
+            int frames = Mathf.Max(1, Mathf.RoundToInt(sampleRate * loopSeconds));
+            float[] data = new float[frames * 2];
+
+            int cycleFrames = Mathf.Max(1, Mathf.RoundToInt(sampleRate / snapped));
+            float[] cycleNoise = new float[cycleFrames];
+            System.Random random = new System.Random(20260929);
+            float filtered = 0f;
+            for (int i = 0; i < cycleFrames; i++) {
+                float white = (float)(random.NextDouble() * 2.0 - 1.0);
+                // One-pole low pass: unfiltered noise reads as hiss rather than as exhaust.
+                filtered += (white - filtered) * 0.12f;
+                cycleNoise[i] = filtered;
+            }
+
+            for (int i = 0; i < frames; i++) {
+                float t = i / (float)sampleRate;
+                float phase = t * snapped;
+                float withinCycle = phase - Mathf.Floor(phase);
+                float pulse = Mathf.Exp(-withinCycle * 7f);
+
+                float body = 0f;
+                for (int harmonic = 1; harmonic <= 7; harmonic++) {
+                    body += Mathf.Sin(2f * Mathf.PI * snapped * harmonic * t) / harmonic;
+                }
+
+                float rasp = cycleNoise[i % cycleFrames];
+                float sample = (body * 0.22f + rasp * 0.55f) * pulse;
+
+                // A slow wobble, because a real idle never holds perfectly steady.
+                sample *= 1f + 0.06f * Mathf.Sin(2f * Mathf.PI * SnapToLoop(1.5f, loopSeconds) * t);
+
+                data[i * 2] = sample;
+                data[i * 2 + 1] = sample * 0.92f;
+            }
+
+            NormalisePeak(data, 0.55f);
+            SoftClip(data);
+            return ToClip("VehicleIdle", data, 2, sampleRate);
+        }
+
+        /// <summary>
+        /// The starter turning over, the engine catching, and the blip of revs as it settles.
+        ///
+        /// Three overlapping stages rather than three clips, so the catch lands in the middle of
+        /// the starter rather than after it - which is what a start actually sounds like.
+        /// </summary>
+        public static AudioClip CreateEngineStart(float durationSeconds = 2.2f) {
+            int sampleRate = GetSampleRate();
+            int frames = Mathf.Max(1, Mathf.RoundToInt(sampleRate * durationSeconds));
+            float[] data = new float[frames];
+
+            System.Random random = new System.Random(19661014);
+            float filtered = 0f;
+            float crankEnd = durationSeconds * 0.45f;
+            float catchAt = durationSeconds * 0.38f;
+
+            for (int i = 0; i < frames; i++) {
+                float t = i / (float)sampleRate;
+                float sample = 0f;
+
+                // Starter: a slow chug plus the gear whine that rides on it, both fading as the
+                // engine takes over.
+                if (t < crankEnd) {
+                    float crankFade = 1f - Mathf.Clamp01(t / crankEnd);
+                    float chug = Mathf.Sin(2f * Mathf.PI * 9.5f * t);
+                    float chugGate = Mathf.Max(0f, chug);
+                    float whine = Mathf.Sin(2f * Mathf.PI * (1450f - 220f * t) * t) * 0.18f;
+                    sample += (chugGate * 0.5f + whine) * crankFade;
+                }
+
+                // The engine catching: firing rate flares above idle and settles back down to it.
+                if (t > catchAt) {
+                    float since = t - catchAt;
+                    float flare = Mathf.Exp(-since * 2.2f);
+                    float firing = 26f + 34f * flare;
+                    float withinCycle = (t * firing) - Mathf.Floor(t * firing);
+                    float pulse = Mathf.Exp(-withinCycle * 7f);
+
+                    float body = 0f;
+                    for (int harmonic = 1; harmonic <= 6; harmonic++) {
+                        body += Mathf.Sin(2f * Mathf.PI * firing * harmonic * t) / harmonic;
+                    }
+
+                    float white = (float)(random.NextDouble() * 2.0 - 1.0);
+                    filtered += (white - filtered) * 0.12f;
+
+                    float rise = Mathf.Clamp01(since * 6f);
+                    sample += (body * 0.22f + filtered * 0.55f) * pulse * rise;
+                }
+
+                data[i] = sample;
+            }
+
+            ApplyFadeIn(data, sampleRate, 0.01f);
+            ApplyFadeOut(data, sampleRate, 0.12f);
+            NormalisePeak(data, 0.8f);
+            SoftClip(data);
+            return ToClip("VehicleStart", data, 1, sampleRate);
         }
 
         private static int GetSampleRate() {

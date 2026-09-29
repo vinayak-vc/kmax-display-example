@@ -24,6 +24,26 @@ Because the base `docs/` folder is read-only, the AGENTS.md section 16
 documentation set for this module lives here
 (`Assets/Games/kmax-display-example/docs/`) rather than at the base project root.
 
+## Exhibits
+
+Two, both on the same runtime stack under `Scripts/Runtime` - every component works
+off an injected catalogue, pose set and model root, so nothing in it is specific to
+either model.
+
+| | Eye anatomy | i4 engine |
+|---|---|---|
+| Scene | `Scenes/EyeAnatomy.unity` | `CarEngineAnimated - i4/VirtualExhibition WR.unity` |
+| Model | `Model/EyeAnatomy.glb` | `CarEngineAnimated - i4/Models/Enginei4.FBX` |
+| Labelled parts | 18 | 12 |
+| Explode poses | 23, baked from the model's clips | 19, authored - the model has no clips |
+| Build command | `Kmax/Eye Anatomy/Set Up Interaction Upgrades` | `Kmax/Engine Exhibit/Set Up Engine Exhibit` |
+
+Both commands find before they create, so re-running one changes nothing.
+
+The engine additionally has procedural machinery - `Enginei4` drives the crank, cams,
+pistons, valves, gears, pulleys and belts from a single RPM value - which runs while
+the engine is assembled and is frozen by `ExhibitMachineryGate` while it is apart.
+
 ## Host environment
 
 - Unity `6000.3.9f1`
