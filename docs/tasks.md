@@ -1,5 +1,55 @@
 # Tasks
 
+## Session 13 (2026-09-25) - engagement: attract loop, pop-out, wrist turn
+
+Three changes aimed at the gap the polish could not close: the exhibit had no reason
+to keep you looking, and nothing drew a passer-by to it at all.
+
+### Attract loop
+
+`ExhibitAttractMode` opens the eye and tours its structures after 30 s idle, camera
+flying to each and drifting gently between, with "Touch a structure to explore"
+breathing above the navigator. Any input hands control back - and deliberately does
+**not** reset the view, because snapping home would remove the thing that drew the
+person over.
+
+A real bug fell out of Play-mode testing: the first version opened the eye itself
+before calling `SelectNextPart`. That made the controller take its immediate path
+rather than the queued one, so the per-part view directions had not been cached yet
+and **every camera flight was silently skipped** - the tour advanced but the camera
+never moved, sitting at 0.500 instead of 0.400. Letting the controller own the
+expand fixed it.
+
+### Stereo pop-out
+
+`EyeFocusView.focusPopOut` (0.10 m) now floats the focused part in front of the
+glass. This had to be done as a camera distance, not a part position: the rig
+transform *is* the virtual screen, so moving `FocusAnchor` moves the screen plane
+with it and the parallax never changes. The gap is exactly `0.5 - distance`.
+
+Framing had to be compensated by the reciprocal, because it is computed against
+`XRRig.ViewSize` on the assumption the part sits at the screen plane - flying closer
+magnifies it and `framingRatio` would stop meaning anything.
+
+### Wrist turn
+
+`AnatomyStylusInput.orbitMode` defaults to `WristTurn`: the pen's own change in aim
+angle drives the view one for one (gain 1.35). Screen dragging scales by the
+projection, so the same hand movement rotates differently depending on the dolly
+distance; an angle is an angle. Angles are measured in **rig space** - the pen hangs
+off the rig, so world-space measurement would feed the orbit back into its own input.
+
+### Verified
+
+Attract loop confirmed on screen touring 1/18 Cornea then 2/18 Tear film, both of
+which now read clearly. Camera distance measured at **0.400, a 0.100 m pop-out**.
+Full manual cycle over all 18 parts on top of the attract component with a clean
+console and one stylus pointer.
+
+**Not verified:** the wrist turn itself, and the pen-movement wake path - both need a
+tracked pen. The mouse, key and scroll wake paths are code-identical to the ones the
+fly controller already uses.
+
 ## Session 12 (2026-09-25) - the other half of the lighting bug
 
 Session 11 made the lights work; the result was ugly. One side blown to flat

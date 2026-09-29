@@ -1,5 +1,75 @@
 # Decisions
 
+## 2026-09-25 - Pop-out is a camera distance, not a part position
+
+**Decision:** `EyeFocusView.focusPopOut` (0.10 m) sets how far a focused part floats
+in front of the display glass, and the controller flies the camera to
+`EyeFocusView.FocusCameraDistance` rather than to a distance of its own.
+
+**Why it has to work this way:** the obvious approach - move `FocusAnchor` toward
+the viewer - does nothing at all. `ViewerFlyController` places the rig at
+`focalCenter + forward * (0.5 - distance)`, and the rig transform *is* the virtual
+screen. Move the focal centre and the screen plane moves with it, so the parallax
+between them never changes. The gap between the two is exactly `0.5 - distance`,
+which makes the camera distance the only lever there is.
+
+**The catch that comes with it:** framing is computed against `XRRig.ViewSize`, which
+assumes the part sits at the screen plane. Flying closer magnifies it by
+`screenDistance / cameraDistance`, so the framing scale is multiplied by the
+reciprocal. Without that compensation, raising the pop-out silently zooms in as
+well and `framingRatio` stops meaning anything.
+
+This is the one feature that uses what the hardware is for. Content at zero parallax
+sits inside the panel like any other screen; only content in front of it reads as
+reaching out of the box.
+
+## 2026-09-25 - The pen turns the view one for one
+
+**Decision:** `AnatomyStylusInput.orbitMode` defaults to `WristTurn`, which applies
+the pen's own change in aim angle to the view at a gain of 1.35. `ScreenDrag`, the
+previous pixel-based behaviour, is kept as the other option.
+
+**Why:** screen-space dragging scales by the projection, so the same hand movement
+rotates by a different amount depending on how far the camera is dollied. An angle
+is an angle at any distance. It is also simply the gesture a tracked wand invites -
+take hold of the thing and turn your wrist - and that is the interaction people
+remember from a fish-tank display.
+
+The angles are measured in **rig space**, not world space. The pen hangs off the rig,
+so its world rotation turns as the view orbits; measuring there would feed the orbit
+back into its own input and the model would keep spinning after the hand stopped.
+
+Direction matches the mouse by default rather than the "held object" convention, so
+switching input device does not reverse the controls. `invertWristTurn` flips it.
+
+## 2026-09-25 - The exhibit demonstrates itself when nobody is there
+
+**Decision:** `ExhibitAttractMode` opens the eye and tours its structures after 30 s
+without input, with a prompt inviting whoever walks past to take over. Any input -
+mouse, key, scroll, pen button or a deliberate pen movement - hands control back.
+
+**Why:** a standing exhibit showing a static model reads as a screensaver from three
+metres away. Slow orbital motion is also the only thing that conveys stereo depth to
+someone not yet close enough to be head-tracked, so the attract loop is what gets
+them within range of the effect the hardware exists for.
+
+**Two details that are deliberate:**
+
+- **Waking does not reset the view.** Snapping home the moment someone touches the
+  pen would take away the exact thing that drew them over. They continue from
+  wherever the tour had reached.
+- **It does not open the eye itself**, even though that was the first thing it did.
+  `SelectNextPart` already opens the eye and queues the selection until the explode
+  settles - and that completion is also when the controller caches the per-part view
+  directions the camera flight needs. Expanding first makes the controller take its
+  immediate path instead, the directions are not ready, and **every camera flight is
+  silently skipped**. That was caught in Play mode: the tour ran but the camera never
+  moved, sitting at 0.500 instead of the 0.400 the pop-out asks for.
+
+The pen wake threshold cannot be zero. A tracked pen is never perfectly still, and
+without a deliberate-movement threshold the exhibit could never go idle at all with a
+pen lying on the desk beside it.
+
 ## 2026-09-25 - Post-processing never ran, because the stereo cameras have no camera data
 
 **Finding, and the second half of the lighting story.** After the renderer was

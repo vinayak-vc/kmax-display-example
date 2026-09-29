@@ -45,19 +45,27 @@
 - [x] Button lift, press punch and press flash.
 - [x] A fourth, foreground mote layer for stronger parallax.
 
+- [x] **Attract loop** - the exhibit tours itself after 30 s idle and invites a
+      passer-by to take over.
+- [x] **Stereo pop-out** - a focused part now floats 0.10 m in front of the glass
+      instead of sitting at zero parallax inside the panel.
+- [x] **Wrist turn** - the pen rotates the view one for one instead of by pixels.
+
 ## Next
 
 - [ ] **Exercise the stylus on Kmax hardware.** The scene side is verified, but
-      `KmaxStylus.Visible` is false without a tracked pen, so the beam, the tip
-      and all three buttons remain unexercised. ai_handoff.md lists the three
-      settings most likely to need a tweak.
+      `KmaxStylus.Visible` is false without a tracked pen, so the beam, the tip, all
+      three buttons, the wrist-turn orbit mode and the attract loop's pen-movement
+      wake are all still unexercised. ai_handoff.md lists the settings most likely
+      to need a tweak. If the wrist turn feels reversed, flip `invertWristTurn`; if
+      it feels heavy, lower `wristTurnGain`.
+- [ ] **Tune the pop-out against a real viewer.** 0.10 m was chosen on geometry, not
+      on comfort. Too much pop-out causes eye strain over a long session, and the
+      right number depends on the panel and the viewing distance.
 - [ ] **Review the anatomy labels in `Data/EyeAnatomyCatalog.asset`**, in
       particular `Medial rectus` / `Lateral rectus` - these depend on whether
       the model is a left or a right eye, which could not be determined. See
       decisions.md.
-- [ ] Confirm on real Kmax hardware. Everything so far has been driven with the
-      stylus disabled and events dispatched in code, because without the device
-      the stylus follows the mouse and fires its own clicks.
 - [ ] Register the scene with the base project's build pipeline
       (`ViitorCloudGameInfoSO` / `EditorBuildSettings`) - a `GameInfoSO.asset`
       now exists in this module but nothing here wires it up.

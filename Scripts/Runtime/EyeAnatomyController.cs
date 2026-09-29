@@ -61,8 +61,6 @@ namespace ViitorCloud.KmaxDisplayExample {
         private bool flyCameraOnSelect = true;
         [SerializeField, Tooltip("Seconds the flight to a selected part takes.")]
         private float flyDuration = 0.7f;
-        [SerializeField, Tooltip("Camera distance in metres while a part is framed.")]
-        private float flyDistance = 0.42f;
         [SerializeField, Range(0f, 1f), Tooltip("How much of the part's own elevation the camera adopts. " +
             "Full elevation is disorienting for parts high above or below the eye's axis.")]
         private float flyPitchDamping = 0.6f;
@@ -289,7 +287,10 @@ namespace ViitorCloud.KmaxDisplayExample {
             float yaw = Mathf.Atan2(-direction.x, -direction.z) * Mathf.Rad2Deg;
             float pitch = Mathf.Asin(Mathf.Clamp(direction.y, -1f, 1f)) * Mathf.Rad2Deg * flyPitchDamping;
 
-            flyController.FlyTo(yaw, pitch, flyDistance, true, flyDuration);
+            // The distance comes from the focus view, because it is what sets the stereo pop-out:
+            // the part floats in front of the glass by exactly (screen distance - camera distance),
+            // and the focus view compensates its framing scale for the same number.
+            flyController.FlyTo(yaw, pitch, focusView.FocusCameraDistance, true, flyDuration);
         }
 
         private void OnResetButtonClicked() {

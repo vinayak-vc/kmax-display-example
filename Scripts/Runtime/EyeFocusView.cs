@@ -45,8 +45,22 @@ namespace ViitorCloud.KmaxDisplayExample {
         [SerializeField, Tooltip("Opaque stand-in used for the rescue. Left empty, nothing is swapped.")]
         private Material focusHighlightMaterial;
 
+        [Header("Stereo Pop-Out")]
+        [SerializeField, Range(0f, 0.3f), Tooltip("Metres the focused part floats in front of the " +
+            "display glass. This is the whole point of the hardware: content at zero parallax sits " +
+            "inside the panel like a normal screen, and only content in front of it reads as " +
+            "reaching out of the box.")]
+        private float focusPopOut = 0.10f;
+
         [SerializeField, Tooltip("View size used outside play mode, when the XRRig has not initialised.")]
         private Vector2 fallbackViewSize = new Vector2(0.3454f, 0.1943f);
+
+        /// <summary>
+        /// Distance from the viewer to the virtual screen, in metres. Hard-coded in
+        /// <see cref="ViewerFlyController"/>, which places the rig at
+        /// <c>focalCenter + forward * (0.5 - distance)</c> and the camera half a metre behind it.
+        /// </summary>
+        public const float ViewerToScreenDistance = 0.5f;
 
         private Renderer[] modelRenderers;
         private Material[][] originalMaterials;
@@ -63,6 +77,24 @@ namespace ViitorCloud.KmaxDisplayExample {
         public bool IsFocused {
             get { return isFocused; }
         }
+
+        /// <summary>
+        /// Camera distance the controller should fly to when framing a part.
+        ///
+        /// Pop-out is not something the part's own position can produce. The virtual screen sits at
+        /// <c>focalCenter + forward * (0.5 - distance)</c> and the camera orbits the focal centre,
+        /// so moving the anchor moves the screen plane with it and the parallax never changes.
+        /// The distance between the two is the only lever, and it is exactly
+        /// <c>0.5 - distance</c> - so flying closer is what pushes the part out of the glass.
+        /// </summary>
+        public float FocusCameraDistance {
+            get { return Mathf.Max(MinimumFocusDistance, ViewerToScreenDistance - focusPopOut); }
+        }
+
+        /// <summary>
+        /// Floor on the focus distance, matching the fly controller's own minimum.
+        /// </summary>
+        private const float MinimumFocusDistance = 0.14f;
 
         private void Awake() {
             if (modelRoot == null) {
@@ -137,6 +169,13 @@ namespace ViitorCloud.KmaxDisplayExample {
             float scaleForWidth = (viewSize.x * framingRatio) / Mathf.Max(localSize.x, Mathf.Epsilon);
             float scaleForHeight = (viewSize.y * framingRatio) / Mathf.Max(localSize.y, Mathf.Epsilon);
             float targetScale = Mathf.Min(scaleForWidth, scaleForHeight);
+
+            // The framing above assumes the part sits at the screen plane. Popping it out means
+            // flying the camera closer, which magnifies it by screenDistance / cameraDistance - so
+            // the model is shrunk by the reciprocal and the part keeps the size it was framed for.
+            // Without this, raising the pop-out silently zooms in as well.
+            targetScale *= FocusCameraDistance / ViewerToScreenDistance;
+
             targetScale = Mathf.Min(targetScale, restLocalScale.x * maxZoomMultiplier);
 
             Vector3 anchor = focusAnchor != null ? focusAnchor.position : Vector3.zero;

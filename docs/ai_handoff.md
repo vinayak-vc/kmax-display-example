@@ -52,6 +52,29 @@ against the tonemapper. `Specular Point` and `Front Fill` are deliberately left
 in the scene **disabled**; re-enabling the point light alone clips a quarter of
 the frame, because it sits 0.13 m from a model 0.1 m across.
 
+## Session 2026-09-25 (latest) - engagement features
+
+Three additions aimed at giving the exhibit a reason to hold attention:
+
+- **`ExhibitAttractMode`** tours the structures after 30 s idle and yields on any
+  input. It deliberately does not reset the view on wake, and deliberately does not
+  expand the eye itself - see the warning in architecture.md, because doing so
+  silently kills every camera flight.
+- **Stereo pop-out**: `EyeFocusView.focusPopOut` floats a focused part 0.10 m in
+  front of the glass. Driven by camera distance, not part position - moving
+  `FocusAnchor` does nothing, because the rig transform is the screen plane.
+- **Wrist turn**: `AnatomyStylusInput.orbitMode` defaults to `WristTurn`, applying
+  the pen's own rotation to the view one for one.
+
+**Measured:** camera distance 0.400 during focus, a 0.100 m pop-out. Attract tour
+confirmed stepping 1/18 then 2/18 with the camera flying to each.
+
+**Not verified:** the wrist turn and the pen-movement wake, both of which need a
+tracked pen. If the wrist turn feels reversed on device, flip `invertWristTurn`; if
+it feels heavy, lower `wristTurnGain`. The 0.10 m pop-out was chosen on geometry, not
+on comfort - too much pop-out causes eye strain over a long session, so it wants a
+pass with a real viewer at the real viewing distance.
+
 ## Session 2026-09-25 (later) - verified in Play mode
 
 The setup command has now been run and the scene saved, and the whole flow was

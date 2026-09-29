@@ -36,6 +36,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         private const string NextButtonName = "NextButton";
         private const string PreviousButtonName = "PreviousButton";
         private const string PartCounterName = "PartCounter";
+        private const string AttractPromptName = "AttractPrompt";
 
         [MenuItem(MenuPath)]
         public static void Run() {
@@ -727,6 +728,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             public Button Next;
             public Button Previous;
             public TextMeshProUGUI Counter;
+            public TextMeshProUGUI AttractPrompt;
         }
 
         /// <summary>
@@ -750,6 +752,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             result.Previous = CloneButton(ui.transform, template, PreviousButtonName, "< Back", new Vector2(-250f, 32f));
             result.Next = CloneButton(ui.transform, template, NextButtonName, "Next >", new Vector2(250f, 32f));
             result.Counter = BuildCounter(ui.transform, template);
+            result.AttractPrompt = BuildAttractPrompt(ui.transform, template);
 
             // Every button gets the press and hover motion, including the ones that were already
             // there - on a stereo panel scale is the only hover cue that survives being looked at
@@ -823,6 +826,46 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             return text;
         }
 
+        /// <summary>
+        /// The line that invites a passer-by to take over while the exhibit is touring itself.
+        ///
+        /// Sits on the bottom centre line above the navigator, which is the one band of the canvas
+        /// nothing else occupies - the existing buttons are stacked bottom-left and bottom-right.
+        /// </summary>
+        private static TextMeshProUGUI BuildAttractPrompt(Transform parent, Button template) {
+            TextMeshProUGUI existing = FindChildComponent<TextMeshProUGUI>(parent, AttractPromptName);
+            if (existing != null) {
+                return existing;
+            }
+
+            TextMeshProUGUI templateText = template.GetComponentInChildren<TextMeshProUGUI>(true);
+            GameObject created = new GameObject(AttractPromptName, typeof(RectTransform));
+            created.transform.SetParent(parent, false);
+            Undo.RegisterCreatedObjectUndo(created, "Create " + AttractPromptName);
+
+            RectTransform rect = created.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0f);
+            rect.anchorMax = new Vector2(0.5f, 0f);
+            rect.pivot = new Vector2(0.5f, 0f);
+            rect.sizeDelta = new Vector2(900f, 70f);
+            rect.anchoredPosition = new Vector2(0f, 150f);
+
+            TextMeshProUGUI text = created.AddComponent<TextMeshProUGUI>();
+            text.alignment = TextAlignmentOptions.Center;
+            text.textWrappingMode = TextWrappingModes.NoWrap;
+            text.raycastTarget = false;
+            text.text = "Touch a structure to explore";
+
+            if (templateText != null) {
+                text.font = templateText.font;
+                text.fontSize = templateText.fontSize * 1.1f;
+                text.color = templateText.color;
+            }
+
+            created.SetActive(false);
+            return text;
+        }
+
         private static void AddMotion(Button button, bool idlePulse) {
             if (button != null) {
                 AddMotion(button.gameObject, idlePulse);
@@ -860,6 +903,14 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             SetIfPresent(controllerSo, "audioDirector", audio);
             SetIfPresent(controllerSo, "particles", particles);
             controllerSo.ApplyModifiedPropertiesWithoutUndo();
+
+            ExhibitAttractMode attract = GetOrAdd<ExhibitAttractMode>(exhibit);
+            SerializedObject attractSo = new SerializedObject(attract);
+            SetIfPresent(attractSo, "exhibitController", controller);
+            SetIfPresent(attractSo, "flyController", fly);
+            SetIfPresent(attractSo, "explodeView", exhibit.GetComponent<EyeExplodeView>());
+            SetIfPresent(attractSo, "promptLabel", navigation.AttractPrompt);
+            attractSo.ApplyModifiedPropertiesWithoutUndo();
 
             AnatomyStylusInput input = GetOrAdd<AnatomyStylusInput>(exhibit);
             SerializedObject inputSo = new SerializedObject(input);

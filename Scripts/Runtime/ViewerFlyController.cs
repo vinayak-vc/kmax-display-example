@@ -101,6 +101,15 @@ namespace ViitorCloud.KmaxDisplayExample {
             get { return _currentDistance; }
         }
 
+        /// <summary>
+        /// True while an animated flight is playing out. Attract mode reads this so its idle drift
+        /// does not fight a flight in progress - any orbit delta cancels a flight, so drifting
+        /// during one would cut every camera move short.
+        /// </summary>
+        public bool IsFlying {
+            get { return _isFlying; }
+        }
+
         private void Awake() {
             if (rigRoot == null) {
                 Debug.LogError($"{nameof(ViewerFlyController)} on '{name}' has no {nameof(rigRoot)} assigned; flying is disabled.", this);

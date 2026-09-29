@@ -42,11 +42,33 @@ namespace ViitorCloud.KmaxDisplayExample {
         [SerializeField, Tooltip("Enable the push and pull dolly on the centre button.")]
         private bool enableDolly = true;
 
+        /// <summary>
+        /// How a held orbit button turns into rotation.
+        /// </summary>
+        public enum OrbitMode {
+            /// <summary>Screen-space travel of the aim point, scaled to degrees. Mouse parity.</summary>
+            ScreenDrag,
+            /// <summary>The pen's own change in aim angle, applied one for one. Feels physical.</summary>
+            WristTurn
+        }
+
         [Header("Feel")]
-        [SerializeField, Tooltip("Degrees orbited per pixel the aim point travels. Matches the mouse drag speed.")]
+        [SerializeField, Tooltip("How a held orbit button becomes rotation. Wrist turn maps the pen's " +
+            "own rotation onto the view one for one, which is the gesture a 6-DOF wand invites - " +
+            "screen drag reproduces the mouse exactly.")]
+        private OrbitMode orbitMode = OrbitMode.WristTurn;
+        [SerializeField, Tooltip("Degrees orbited per pixel the aim point travels. Screen drag mode only.")]
         private float orbitSpeed = 0.25f;
         [SerializeField, Tooltip("Pixels the aim point must travel before a press becomes a drag rather than a click.")]
         private float dragThreshold = 6f;
+        [SerializeField, Range(0.25f, 4f), Tooltip("Degrees of view rotation per degree of pen rotation. " +
+            "1 is literally one for one; a little above that saves the wrist on a wide turn.")]
+        private float wristTurnGain = 1.35f;
+        [SerializeField, Tooltip("Degrees the pen must turn before a press becomes a drag rather than a click.")]
+        private float wristDragThreshold = 1.5f;
+        [SerializeField, Tooltip("Flip the wrist turn so the model follows the pen like a held object, " +
+            "rather than orbiting the view around it. Off keeps it consistent with the mouse.")]
+        private bool invertWristTurn;
         [SerializeField, Tooltip("Metres dollied per metre the pen is pushed forward or pulled back.")]
         private float dollyGain = 1.6f;
         [SerializeField, Tooltip("Seconds a reset press may last and still count as a tap. Holding does nothing.")]
@@ -63,6 +85,8 @@ namespace ViitorCloud.KmaxDisplayExample {
         private bool _orbitSuppressed;
         private Vector2 _lastAimPoint;
         private Vector2 _pressAimPoint;
+        private Vector2 _lastAimAngles;
+        private Vector2 _pressAimAngles;
 
         private float _resetPressTime = -1f;
 
@@ -124,12 +148,15 @@ namespace ViitorCloud.KmaxDisplayExample {
             }
 
             Vector2 aim = GetAimScreenPoint();
+            Vector2 angles = GetAimAngles();
 
             if (!_isOrbitPressed) {
                 _isOrbitPressed = true;
                 _isOrbiting = false;
                 _lastAimPoint = aim;
                 _pressAimPoint = aim;
+                _lastAimAngles = angles;
+                _pressAimAngles = angles;
 
                 // A press that lands on the UI belongs to the button under it. A press on the eye,
                 // on a badge, or on empty space is the viewer reaching for the model.
@@ -141,6 +168,19 @@ namespace ViitorCloud.KmaxDisplayExample {
                 return;
             }
 
+            if (orbitMode == OrbitMode.WristTurn) {
+                UpdateWristTurn(angles);
+                return;
+            }
+
+            UpdateScreenDrag(aim);
+        }
+
+        /// <summary>
+        /// Rotation from how far the aim point travelled across the screen, in pixels. Identical in
+        /// feel to a mouse drag, which is what makes the two input paths interchangeable.
+        /// </summary>
+        private void UpdateScreenDrag(Vector2 aim) {
             if (!_isOrbiting) {
                 if ((aim - _pressAimPoint).magnitude < dragThreshold) {
                     _lastAimPoint = aim;
@@ -160,6 +200,43 @@ namespace ViitorCloud.KmaxDisplayExample {
             }
 
             flyController.AddOrbitDelta(delta.x * orbitSpeed, -delta.y * orbitSpeed);
+        }
+
+        /// <summary>
+        /// Rotation from how far the pen itself turned, in degrees, applied one for one.
+        ///
+        /// This is the gesture a tracked wand actually invites: take hold of the model and turn
+        /// your wrist. Screen-space dragging works, but it scales by the projection - the same
+        /// hand movement rotates by a different amount depending on how far the camera is dollied -
+        /// where an angle is an angle at any distance.
+        /// </summary>
+        private void UpdateWristTurn(Vector2 angles) {
+            if (!_isOrbiting) {
+                float travelled = Mathf.Max(
+                    Mathf.Abs(Mathf.DeltaAngle(_pressAimAngles.x, angles.x)),
+                    Mathf.Abs(Mathf.DeltaAngle(_pressAimAngles.y, angles.y)));
+
+                if (travelled < wristDragThreshold) {
+                    _lastAimAngles = angles;
+                    return;
+                }
+
+                _isOrbiting = true;
+                _lastAimAngles = _pressAimAngles;
+            }
+
+            // DeltaAngle rather than subtraction, so a pen crossing the +/-180 seam does not
+            // register as most of a full turn.
+            float yaw = Mathf.DeltaAngle(_lastAimAngles.x, angles.x);
+            float pitch = Mathf.DeltaAngle(_lastAimAngles.y, angles.y);
+            _lastAimAngles = angles;
+
+            if (Mathf.Approximately(yaw, 0f) && Mathf.Approximately(pitch, 0f)) {
+                return;
+            }
+
+            float gain = wristTurnGain * (invertWristTurn ? -1f : 1f);
+            flyController.AddOrbitDelta(yaw * gain, pitch * gain);
         }
 
         private void UpdateReset() {
@@ -236,6 +313,25 @@ namespace ViitorCloud.KmaxDisplayExample {
             Pose pose = stylus.StartpointPose;
             Vector3 aimPoint = pose.position + stylus.RayLength * (pose.rotation * Vector3.forward);
             return camera.WorldToScreenPoint(aimPoint);
+        }
+
+        /// <summary>
+        /// Where the pen is aiming, as yaw and pitch in degrees, measured in the rig's own space.
+        ///
+        /// Rig space matters: the pen hangs off the rig, so its world rotation turns with the view.
+        /// Measuring in world space would feed the orbit back into its own input and the model
+        /// would keep spinning after the hand stopped.
+        /// </summary>
+        private Vector2 GetAimAngles() {
+            Pose pose = stylus.StartpointPose;
+            Quaternion local = rigRoot != null
+                ? Quaternion.Inverse(rigRoot.rotation) * pose.rotation
+                : pose.rotation;
+
+            Vector3 forward = local * Vector3.forward;
+            float yaw = Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
+            float pitch = -Mathf.Asin(Mathf.Clamp(forward.y, -1f, 1f)) * Mathf.Rad2Deg;
+            return new Vector2(yaw, pitch);
         }
 
         /// <summary>

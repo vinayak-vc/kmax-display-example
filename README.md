@@ -28,6 +28,8 @@ The exhibit presents an anatomically accurate human eye in full stereoscopic dep
 - **6-DOF Stylus with a Physical Beam**: The Kmax pen casts a tapered line-renderer beam that terminates in a pointed cone resting on the surface it hits, oriented to that surface's normal. The beam recolours on contact and the pen pulses, so the viewer feels the anatomy before they press anything.
 - **Direct Structure Picking**: Mesh colliders are fitted to every catalogued structure, so pointing at the sclera selects the sclera. The beam stops on the eye instead of passing through it.
 - **Next / Back Structure Navigator**: Steps through all 18 structures with the camera flying to a viewpoint on each one's own side of the eye. This reaches the nested structures whose badges are occluded from most angles and were previously unselectable.
+- **Self-Demonstrating Attract Loop**: After 30 seconds without input the eye opens itself and tours all 18 structures, the camera flying to each and drifting gently between, with an invitation to take over. Any input &mdash; mouse, key, scroll, pen button or a deliberate pen movement &mdash; hands control straight back, and deliberately leaves the view where the tour reached rather than snapping home.
+- **True Stereo Pop-Out**: A focused structure floats **0.10 m in front of the display glass** rather than sitting at zero parallax inside the panel. Content at zero parallax reads like any other screen; only content in front of it reads as reaching out of the box.
 - **Layered 3D Stereoscopic Ambience**: Four mote layers at different depths - well in front of, just in front of, on, and behind the zero-parallax plane - so the volume reads as genuinely deep rather than as one flat sheet of sparkle. The whole field swells briefly whenever something is selected.
 - **Interface That Is Never Occluded**: The world-space canvas is taken out of the depth test, so the info panel keeps its text even when a structure is scaled up in front of it. The canvas sits 0.5 m from the viewer while the camera orbits 0.42 m from the model, so without this the anatomy routinely cuts across the UI.
 - **Translucent Structures Rescued**: `Lens` and `Tear film` ship as a 91% grey at 58% alpha and are effectively invisible however the scene is lit. While focused they are swapped onto a translucent glassy stand-in that reads as an optical body and lets the structures behind show through.
@@ -50,11 +52,13 @@ The pen exposes **three buttons**, read as `IStylus.GetButton(0..2)`:
 
 | Button | Index | Action | Behavior |
 |---|:---:|---|---|
-| **Front (Primary)** | `0` | Select / Orbit | A tap selects a badge, a structure or a UI button. Press and drag orbits the view, exactly as a mouse drag does. The two are separated by a travel threshold, so a drag never selects by accident. |
+| **Front (Primary)** | `0` | Select / Turn | A tap selects a badge, a structure or a UI button. Press and turn your wrist rotates the view **one for one** with the pen &mdash; take hold of the eye and turn it. The two are separated by a travel threshold, so a turn never selects by accident. |
 | **Rear** | `1` | Reset View | A tap returns the camera and model to the starting pose and clears any focus. Edge-triggered on release with a tap timeout, so resting a thumb on it does nothing. |
 | **Centre** | `2` | Dolly | Hold, then push the pen toward the display to move in or pull back to move out. |
 
 > [!NOTE]
+> Orbit defaults to `WristTurn`, which applies the pen's own change in aim angle at a gain of `1.35`. Screen-space dragging scales by the projection, so the same hand movement rotates by a different amount depending on how far the camera is dollied &mdash; an angle is an angle at any distance. Set `AnatomyStylusInput.orbitMode` to `ScreenDrag` for exact mouse parity, or `invertWristTurn` to make the model follow the pen like a held object.
+>
 > Button `0` is also `KmaxStylus.PrimaryKey`. This is deliberately **not** the SDK default of `Middle` &mdash; `KmaxStylus.StateOf` swaps index `0` with the primary's index whenever the primary is not `Left`, which would otherwise make the stylus script and the input module disagree about which physical key is which.
 
 ### Mouse & Keyboard
@@ -181,6 +185,7 @@ Assets/Games/kmax-display-example/
 │       ├── EyePartBounds.cs           # Accurate mesh bounds calculator
 │       ├── EyePartColliders.cs        # Fits mesh colliders (box fallback) to a structure
 │       ├── EyePartPicker.cs           # Makes a structure's own geometry selectable
+│       ├── ExhibitAttractMode.cs      # Idle tour that demonstrates the exhibit to an empty room
 │       ├── ExhibitPostProcessing.cs   # Enables post-FX + HDR on the runtime stereo cameras
 │       ├── ProceduralAudio.cs         # Synthesises the pad and the interface cues
 │       ├── UiAlwaysOnTop.cs           # Takes the canvas out of the depth test

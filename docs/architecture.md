@@ -46,6 +46,41 @@ Assets/Games/kmax-display-example/
 > renderer and the tonemapper.** Without post-processing the model's near-white
 > albedo clips the moment lighting is strong enough to read.
 
+### Stereo pop-out
+
+`EyeFocusView.focusPopOut` (0.10 m) sets how far a focused part floats in front of
+the display glass. The controller flies the camera to
+`EyeFocusView.FocusCameraDistance` rather than to a distance of its own.
+
+**Pop-out cannot be produced by moving the part.** `ViewerFlyController` places the
+rig at `focalCenter + forward * (0.5 - distance)`, and the rig transform *is* the
+virtual screen. Moving `FocusAnchor` moves the screen plane with it, so the parallax
+never changes. The gap between the two is exactly `0.5 - distance`, which makes the
+camera distance the only lever.
+
+Framing is compensated by the reciprocal of that ratio. It is computed against
+`XRRig.ViewSize` on the assumption the part sits at the screen plane, so flying
+closer magnifies it by `screenDistance / cameraDistance` - without the compensation,
+raising the pop-out silently zooms in as well and `framingRatio` stops meaning
+anything.
+
+### Attract mode
+
+`ExhibitAttractMode` opens the eye and tours its structures after 30 s idle, then
+yields on any input without resetting the view.
+
+> [!IMPORTANT]
+> It must **not** expand the eye itself before calling `SelectNextPart`.
+> `StepSelection` already opens the eye and queues the selection until the explode
+> completes, and that completion is also when `CacheViewDirections` runs. Expanding
+> first makes the controller take its immediate path, the directions are not ready,
+> and `FlyToPart` returns early - so the tour advances but **the camera never
+> moves**. This was the failure mode caught in Play mode on the first version.
+
+The pen wake threshold cannot be zero: a tracked pen is never perfectly still, so
+without a deliberate-movement threshold the exhibit could never go idle with a pen
+lying on the desk beside it.
+
 ### Post-processing
 
 `PostFX` holds a global `Volume` on `URPAssets/AnatomyPostFX.asset`: Neutral
@@ -158,9 +193,9 @@ Ten roots:
 | `EyeModelPivot/EyeAnatomy` | the `.glb` instance; what `EyeFocusView` moves and scales |
 | `Key Light` / `Fill Light` / `Rim Light` | three directionals; only the key casts shadows |
 | `EventSystem` | `EventSystem` + `KmaxInputModule` |
-| `UI` | world-space canvas: `ExpandButton`, `BackButton`, `ResetButton`, `PreviousButton`, `NextButton`, `PartCounter`, `InfoPanel` |
+| `UI` | world-space canvas: `ExpandButton`, `BackButton`, `ResetButton`, `PreviousButton`, `NextButton`, `PartCounter`, `AttractPrompt`, `InfoPanel` |
 | `FocusAnchor` | where a focused part is brought to. At the origin |
-| `EyeAnatomyExhibit` | `EyeExplodeView`, `EyeFocusView`, `EyeAnatomyController`, `EyeManipulator`, `ViewerFlyController`, `AnatomyStylusInput` |
+| `EyeAnatomyExhibit` | `EyeExplodeView`, `EyeFocusView`, `EyeAnatomyController`, `EyeManipulator`, `ViewerFlyController`, `AnatomyStylusInput`, `ExhibitAttractMode`, `ExhibitPostProcessing` |
 | `Ambience` | `AnatomyParticleDirector` + `MoteField` + `MoteField_Near` + `MoteField_Far` + `MoteField_Foreground` + `FocusBurst` + `PopupRing` + `RiseSparks` |
 | `Audio` | `AnatomyAudioDirector` and its two `AudioSource`s |
 | `Front Fill` / `Specular Point` | two added lights; see **Environment** below |
@@ -289,7 +324,8 @@ whole flow:
 | `EyeFocusView` | the model + the XRRig | frames one part and **ghosts** the rest; `Focus` / `ClearFocus` |
 | `EyeManipulator` | the pivot | turntable orbit, pan and zoom of the model, with pitch clamps and damping |
 | `ViewerFlyController` | the XRRig root | spherical orbit navigation of the viewer; owns the `R` reset key and `FlyTo` |
-| `AnatomyStylusInput` | the stylus + the fly controller | maps the pen's three buttons onto orbit, reset and dolly |
+| `AnatomyStylusInput` | the stylus + the fly controller | maps the pen's three buttons onto orbit, reset and dolly; orbit is wrist-turn by default |
+| `ExhibitAttractMode` | the controller + the fly controller | tours the exhibit when idle, and gets out of the way on any input |
 | `AnatomyStylusBeam` | the stylus | `IPointerVisualize`: draws the beam and places the tip on the hit surface |
 | `EyeAnatomyController` | all of the above + the catalog + the UI | the only class that knows the actual flow |
 | `AnatomyInfoPanel` | two `TextMeshProUGUI` fields | shows a name and description |
