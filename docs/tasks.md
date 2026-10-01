@@ -1,5 +1,396 @@
 # Tasks
 
+## Session 26 (2026-10-01) - Cross-Scene Suite, Launcher, Unified Audio/Stylus/UI & Volvo S90 Lighting
+
+Integration pass delivering the 4-scene application suite (`Launcher.unity`, `EyeAnatomy.unity`, `VirtualExhibition WR.unity`, `VolvoS90.unity`), cross-scene navigation, persistent ambient audio, interactive 4-color stylus beam, UI miniaturization & glassmorphism, and luxury automotive lighting calibration.
+
+### Built & Implemented
+
+- **Cross-Scene Navigation & Cyclical Switcher** (`ExhibitSceneSwitcher.cs`):
+  - Added "Next Scene" navigation button to all scenes (`ExhibitUiFactory`).
+  - Seamless cyclical switching (`Launcher` → `EyeAnatomy` → `VirtualExhibition WR` → `VolvoS90` → `Launcher`).
+- **Interactive 3D Exhibit Launcher** (`Scenes/Launcher.unity`, `LauncherSceneBuilder.cs`, `ExhibitLauncherController.cs`):
+  - Three interactive cards with generated thumbnail art (`Eye`, `Engine`, `Volvo S90`).
+  - Selecting a tile dynamically spawns that scene's 3D model rotating in the background (12°/s) at stereo pop-out depth (+0.08 m).
+  - Background model ignores raycasts, allowing unobstructed UI interaction.
+  - Contextual "Load Scene" button animates into view beneath the selected tile.
+- **Persistent Seamless Audio Director** (`AnatomyAudioDirector.cs`):
+  - Configured `DontDestroyOnLoad` on audio director singleton.
+  - Soothing background music streams continuously without clicks, skips, or resets across scene transitions.
+  - Re-architected procedural click audio via math synthesis (`ProceduralAudio.cs`), replacing outdated click audio.
+- **Glassmorphic UI & Motion System** (`ExhibitUiFactory.cs`, `UiButtonMotion.cs`, `UiAlwaysOnTop.cs`):
+  - Scaled UI elements 50% down to prevent obscuring 3D hero assets.
+  - Pinned controls to top-left and information displays to top-right.
+  - Smooth spring hover (1.04x) and press absorption (0.94x) animations.
+  - `UiAlwaysOnTop` canvas sorting prevents 3D model colliders from intercepting UI clicks.
+- **4-Color Interactive Stylus Beam System** (`AnatomyStylusBeam.cs`, `KmaxStylus.cs`):
+  - Button 0 (Primary / Laser): Calm Cyan (`#2EA3FF`).
+  - Button 1 (Back / Reset): Amber Orange (`#FFAA22`).
+  - Button 2 (Tertiary / Tool): Purple Magenta (`#B844FF`).
+  - Interactive Hover & Select: Vibrant Emerald Green (`#33FF88`) whenever aiming at interactive buttons or 3D badges and pressing select.
+- **Hotspot Badge Anchoring & Floor Clearance Fix** (`EyeAnatomyController.cs`, `EyeHotspot.cs`):
+  - Anchored badges tightly (2–5 cm) to local part meshes without swinging during car/model rotation.
+  - Clamped badge floating height above floor so wheels (#4) and tailpipes (#7) never clip into the showroom disc.
+  - Repositioned Engine scene hotspot #3 so it sits outside the manifold rather than inside geometry.
+- **Volvo S90 Automotive Lighting & Post-Processing Overhaul** (`VolvoExhibitBuilder.cs`, `EyeAnatomySceneUpgrader.cs`):
+  - Fixed interior blowout caused by overpowered point light and unmasked ceiling console emission.
+  - Reduced `Cabin Light` intensity to `0.0008f` with `range = 0.039m`, creating warm, elegant courtesy lighting.
+  - Separated `Interior` (soft courtesy glow `(0.12, 0.10, 0.08)`) and `Dashboard` (`(0.55, 0.62, 0.72)`) digital display backlight channels.
+  - Focused dual headlights to 44° cone at `0.018f` intensity, angled 4° downward onto floor.
+  - Added persistent sub-asset serialization for `Tonemapping` and `Bloom` on `AnatomyPostFX.asset`.
+  - Added `OnDisable` safety in `EyeFocusView.cs` to prevent ghost materials persisting in scene files.
+
+### Measured & Verified
+
+| | |
+|---|---|
+| Scenes configured | 4 (`Launcher`, `EyeAnatomy`, `VirtualExhibition WR`, `VolvoS90`) |
+| Cross-scene loop | 4 transitions verified clean without memory/audio leak |
+| UI scale reduction | 50% reduction in screen real estate; 0 collider raycast deadlocks |
+| Stylus beam feedback | 4 distinct visual states responding to input & raycast targets |
+| Hotspot clearance | 100% badges above floor plane; 0 clipping into showroom disc |
+| Volvo interior lighting | Blown-out white pixels reduced to 0; interior detail fully legible |
+| Build status | 0 compilation errors, 0 warnings across all scenes |
+
+## Session 25 (2026-09-30) - M4, Probe
+
+`Scenes/Showcase/Probe.unity`, authored by `Kmax/Showcase/Set Up Probe`. Two new runtime types and
+one build step. 0 errors, 0 warnings.
+
+### Built
+
+- `ProbePath` - generates the tunnel centreline, sweeps its rails and hoops, and answers the
+  distance query the game scores against
+- `ProbeGame` - entry, contact, penalties, timer, best time, difficulty, attract marker
+- `ProbeSceneBuilder` - `Kmax/Showcase/Set Up Probe`
+- `ShowcaseBuildUtility.EnsureUnlitMaterial`
+
+### Measured
+
+| | |
+|---|---|
+| Tunnel span | mouth -94 mm, end +240 mm, length 346 mm |
+| **200 tunnels, 5 difficulties** | **0 break the stereo window** |
+| Lumen across difficulty | 16.5 mm down to 7.4 mm |
+| Contact cooldown | 20 contacts in 10 s at 0.5 s spacing; clock = elapsed + 40 s |
+| A completed run | best 5.68 s, difficulty 0 to 0.20, lumen 16.5 to 14.7 mm |
+| Audit | 0 window violations, 0 outside depth |
+| Build re-run | 5 roots, 18 transforms, unchanged |
+
+### Fixed
+
+**Difficulty scaling was completely non-functional.** Finishing a run resolved the scene, the
+lifecycle auto-reset to Attract, and `ProbeGame` reads Attract as a new visitor - clearing the
+difficulty and the best time. Every run started from scratch. Probe now owns its replay; only the
+idle timeout resets a player.
+
+**The attract marker saved as a one-metre sphere at the origin**, because the game only sizes it
+at runtime. Outside the depth budget and breaking the window. **The comfort audit from M1 caught
+this on its own** - the first time the tooling found something rather than confirming something.
+
+### Not verified
+
+Nothing in this scene has been seen in stereo, and the lumen sizes are chosen against no
+measurement of how accurately the pen actually tracks. Probe is the scene most sensitive to that
+number: if `S0-2` shows the tip is out by more than a few millimetres, the hardest difficulty is
+not playable and `lumenHardScale` has to rise.
+
+## Session 24 (2026-09-30) - M3, Stack
+
+`Scenes/Showcase/Stack.unity`, authored by `Kmax/Showcase/Set Up Stack`. Two new runtime types,
+one build step, and a shared build utility extracted from Bloom. 0 errors, 0 warnings.
+
+### Built
+
+- `StackGame` - scoring, topple detection, reset, the idle nudge, and the gravity override
+- `StackBlock` - settling, knock reporting, home pose
+- `StackSceneBuilder` - `Kmax/Showcase/Set Up Stack`
+- `ShowcaseBuildUtility` - the rig, event system, tip and diagnostics, shared with Bloom and
+  ready for M4 and M5
+
+### Measured
+
+| | |
+|---|---|
+| Grab, off-centre by 16.3 mm | carried at 16.3 mm |
+| Held body | gravity off, **not** kinematic - it must still collide |
+| Comfort clamp, dragged to -300 mm | held at exactly -130.0 mm |
+| One block placed | StackedCount 1, height 23.3 mm - one block exactly |
+| Window violations / outside depth | 0 / 0 |
+| Build step re-run | 6 roots, 32 transforms, unchanged |
+
+### Found
+
+**The grab offset was wrong by the block's scale.** `Transform.InverseTransformPoint` divides by
+`localScale` and the offset was reconstructed with rotation alone, so on a unit cube scaled to
+23 mm the error was about forty times. A grab 1 mm off centre held the block 40 mm from the hand.
+Invisible in the first test, which grabbed a block exactly at its centre.
+
+**The two existing exhibits are authored for different panels.** The SDK prefab and VolvoS90 are
+15.6 inches (345 x 194 mm); EyeAnatomy overrides `screen.screenType` to 27 (598 x 336 mm). The
+first Stack layout was written in metres against the wrong one and overhung the frame. Every
+dimension is now a fraction of the comfort volume.
+
+**Height alone does not mean stacked.** The bench top sits below the platform top, so a fresh
+scene scored all ten blocks. Now tested against the platform's footprint.
+
+**Unity 6 renamed `PhysicMaterial` to `PhysicsMaterial` but not the asset extension.** Writing
+`.physicsMaterial` produces a file that looks correct on disk and keeps working all session
+because the live object is still referenced - and comes back as a `DefaultAsset` the next time
+anything loads it by path. The extension is still `.physicMaterial`.
+
+### Not verified
+
+`followTime`, the spring lag between hand and block, is still 0.04 s on no evidence. It decides
+whether the scene feels like holding an object, and it cannot be judged without hands on the pen.
+
+## Session 23 (2026-09-30) - M2, Bloom
+
+`Scenes/Showcase/Bloom.unity`, authored end to end by `Kmax/Showcase/Set Up Bloom`. Four new
+runtime types and one build step. 0 errors, 0 warnings, including through play-mode exit.
+
+### Built
+
+- `BloomMoteField` - forty-eight motes drifting out of the volume, through the glass, into the
+  viewer's space, bursting on the pen tip
+- `BloomScreenGrid` - a sparse grid on the screen plane, so the crossing is a visible event
+- `ShowcaseAudio` - a synthesised chime, pitched by depth
+- `BloomSceneBuilder` - `Kmax/Showcase/Set Up Bloom`
+- `StereoVolume.ProjectedMargin` - how far inside the window a point appears
+
+### Measured
+
+| | |
+|---|---|
+| Motes crossing the glass | 10 in front, 38 behind, span -87..+209 mm |
+| Window violations | **0**, sampled continuously |
+| Bursts in one run | 90, each emitting exactly 14 particles |
+| Lifecycle | Attract to Engaged to Playing to Attract, score cleared |
+| Build step re-run | 5 roots, 18 transforms, unchanged |
+
+### Found
+
+**The SDK's vibration path throws without a pen.** `KmaxStylus` exists in the scene whether or
+not hardware is connected, so a null check passes, and then `PenTracker.Vibrate` reaches a
+`PNClient` with no connection and throws from inside vendor code. Every haptic call now checks
+`KmaxStylus.Visible`. This would have hit all four scenes.
+
+**URP overwrites blend factors set directly.** `_SrcBlend` and `_DstBlend` are re-derived from
+`_Surface` and `_Blend` on import - the same shape as the clear-coat trap on the Volvo. And URP's
+additive is `SrcAlpha, One`, not `One, One`, so the first verification flagged a correct material
+as broken. See decisions.md.
+
+**`S2-2` changed shape.** Planned as a tuned lifetime, built as a continuous fade on
+`ProjectedMargin`, because a mote drifting straight at the viewer runs out of window margin
+without moving sideways at all.
+
+### Not verified
+
+The chime and the haptic tick were exercised as code paths but neither was heard nor felt. The
+trails, the depth-graded size and the grid are running but have only been seen flat. `S2-8`
+remains open.
+
+## Session 22 (2026-09-30) - M1, the shared core
+
+Ten types under `Scripts/Showcase/`, in two new assemblies. Compiles clean: **0 errors,
+0 warnings**. The Volvo and the other exhibits are untouched.
+
+### Built
+
+| Type | Task |
+|---|---|
+| `StereoVolume` | `S1-2`, `S1-3` - the budget, and the window-violation test |
+| `StereoVolumeGizmo` | `S1-4` - the volume drawn in the scene view |
+| `StylusTip` | `S1-5` - the pen tip as a tracked point with contact and velocity |
+| `StylusHaptics` | `S1-6` - rate-limited pulses and a shared cue vocabulary |
+| `Grabbable` / `StylusGrab` | `S1-7` - tip-proximity grab on a spring |
+| `ShowcaseScene` / `ShowcaseState` | `S1-8` - lifecycle and idle reset |
+| `ComfortOverlay` | `S1-9` - the budget drawn at runtime, on the device |
+| `ShowcaseComfortValidator` | `S1-10` - `Kmax/Showcase/Audit Comfort Volume` |
+
+### Measured, not asserted
+
+The budget reads back off a live rig as **130.0 mm of pop-out and 300.0 mm of depth**, which is
+what the derivation from `StereoCamera.DefaultDistance` and the rig's comfort gizmo predicts.
+
+`ViolatesWindow` passes six cases. The one worth stating: a point at 0.9 of the half-window
+**violates when popped fully forward and does not violate at the same X on the glass** - 67.0 mm
+of overshoot, hand-checked against the projection arithmetic. That is the whole reason the test
+exists, because flat it looks identical either way.
+
+### Found
+
+**The rig is configured for a 27-inch screen, not 15.6.** The working window is
+**598 x 336 mm**, nearly twice the width the design doc had been using as its headline example.
+Content can sit much further off-centre before it breaks the window than the earlier numbers
+implied. showcase-suite.md is corrected.
+
+### Not verified, and cannot be here
+
+Everything touching the pen. `tipOffset` is still zero, `followTime` is 0.04 s on no evidence,
+and neither the gizmo nor the overlay has been looked at in stereo. See ai_handoff.md.
+
+## Session 21 (2026-09-30) - a new suite, designed but not yet built
+
+No code this session. The Volvo work is closed; the next body of work is four new scenes
+with nothing carried over from it. This session is the design and the plan.
+
+### Decided
+
+- **Four scenes, from scratch**, in an order that is simultaneously an argument about the
+  hardware, the client-demo script, and increasing technical risk: **Bloom** (there is space
+  in front of the glass), **Reef** (it is deep and richly occluded), **Stack** (you can reach
+  into it), **Probe** (it is accurate enough to work in).
+- **A separate assembly**, `Scripts/Showcase/Runtime`, rather than extending the exhibit
+  runtime. Direct manipulation and catalogue-driven focus-and-ghost are different shapes.
+  decisions.md has the reasoning and what still carries over.
+- **The design thesis**: every scene is built around a task that cannot be completed without
+  stereo. Looking deep is not the bar; requiring depth is.
+- **M0 is a gate.** Half a day of measurement on the hardware before anything is built,
+  because the whole suite rests on an assumption nothing in this project has ever tested.
+
+### Measured, from the SDK rather than chosen
+
+The comfort budget every scene is designed into, derived from
+`StereoCamera.DefaultDistance = 0.5f` and the comfort gizmo in `XRRig.DrawFrustum` at 0.37
+and 0.80 from the camera:
+
+| | |
+|---|---|
+| Pop-out, in front of glass | **0.13 m** |
+| Depth, behind glass | **0.30 m** |
+| Window, 15.6 in | 0.345 x 0.194 m |
+
+All of it scales with `XRRig.ViewScale`. `StereoVolume` will derive these rather than
+hard-code them.
+
+### Found while reading the SDK
+
+**The stylus is being used as a mouse.** It is a 6-DOF pen with three buttons and haptics,
+and `AnatomyStylusInput` maps it to orbit, dolly and reset - camera control. Confirmed by
+what is absent from `Scripts/`: no `StylusDragable`, no `Hit3D`, no `drag3D`. Nothing in any
+of the three exhibits is grabbable.
+
+The hardware's actual distinguishing feature is co-location: head tracking keeps the frustum
+converged on the viewer's real eyes, so an object at -0.08 m and the physical pen tip occupy
+the same point in the room. That is the thing no phone, TV or glasses-free display without
+tracking can do, and the thing a video of the exhibit cannot carry. The whole suite is built
+on it - which is exactly why M0 has to prove it is true before M3 depends on it.
+
+### Written
+
+- `docs/showcase-suite.md` - design, the four scenes, shared core, milestones, task tracker,
+  risks and scope guards
+- `docs/roadmap.md` - suite added to Next, existing items retained below it
+- `docs/decisions.md` - four entries
+
+### Next
+
+`S0-1` through `S0-7` in showcase-suite.md. They need the hardware.
+
+## Session 20 (2026-09-29) - the showroom, the icons, and the real engine
+
+Six things asked for, all in, all verified in play mode.
+
+### Fixed
+
+- **The concentrated spot when the lights come on.** The headlight beams were authored when
+  there was nothing in front of the car for them to land on. Once the showroom floor existed
+  they burned a hard white pool into it: intensity 1.4 to **0.16**, cone 52/22 to 78/58
+  degrees, range 2.2 to 1.5 car-lengths. The lamp emissives came down with them.
+- **The tail lamps were not red.** The model ships every lens white or grey with no texture -
+  all the red came from the emission - and over a lit floor the lenses out-lit it. The glass
+  is now tinted by the build step, red for the diffusers and amber for the indicator section.
+  A tail light is red in daylight too.
+- **The sunroof looked like it was not moving.** It was tilting, and measurably - the rear
+  edge lifts 6 mm - but through transparent glass on a car 74 mm tall that reads as nothing.
+  Now 32 degrees. The reason the first attempt at this changed nothing is in decisions.md:
+  `BuildSoloPanel` was handing back the existing hinge untouched.
+- **The guided tour hid the paint.** Every stop ghosted the bodywork, so choosing a colour
+  and then starting the tour lost it. Ghosting is now a property of the catalogue entry, and
+  only the two interior stops use it.
+- **Straight lines and speckle on the floor.** The speckle was the drifting mote layers -
+  invisible over a dark backdrop, white specks over a lit floor - now off for this exhibit.
+  The lines were the window gobo, which had inverted hard edges from a bug in the `Step`
+  helper; softened and refined to a finer tile.
+
+### Built
+
+- **Icons on the car's controls.** `ExhibitIconFactory` draws six glyphs as signed distance
+  fields and saves them as sprites - doors, sunroof, tour, lights, ignition, reset. Nothing
+  downloaded. Icon *and* label: an unlabelled glyph is a guess to someone who has never seen
+  the exhibit.
+- **A showroom.** A lit floor with tile joints under a window gobo on the key light, a real
+  cast shadow, and a studio cubemap for the paint to reflect - bright floor, dark ceiling,
+  window bands low on the walls, which is the arrangement that makes a car body read.
+- **Clear-coated paint.** `Car Paint` moved to Complex Lit with the clear coat on. This is
+  what "reflective skin" needed; a higher smoothness on the plain Lit shader cannot do it.
+- **The real engine.** The supplied start recording plays once and the loop takes over under
+  it, sequenced by the delay derived from the start clip's own length.
+
+### Measured
+
+Clipping is the calibration, as it was for the eye: **14.43% of frame down to 4.29%**, with
+the brightest floor at sRGB 0.73-0.82. What still clips is the lamps and the paint's
+highlights, which are light sources.
+
+## Session 19 (2026-09-29) - the Volvo's last three features, then a presentation pass
+
+### The three features that were outstanding
+
+**Interior focus.** Thirty-one cabin meshes - everything wearing `Shell`, `Dashboard`,
+`CenterConsole`, `Front Seat`, `Rear Seats` and `Steeringwheel`, plus the two screens,
+the crystal gear knob, its surround and the pedals - are gathered under a single
+`Interior` node at the car's own origin, world poses untouched. That node is a catalogue
+entry like any other, so `EyeFocusView` frames it and ghosts the 119 renderers that are
+not under it: shell, roof, glass, wheels and door cards. No new mechanism, and no camera
+inside the car, which the rig cannot do anyway.
+
+The door cards are deliberately left on their hinges rather than moved into the group.
+They are interior trim and the swatches still repaint them, but they have to swing with
+their doors, so the cabin focus ghosts them - which reads correctly, since a ghosted door
+is a door you can see through.
+
+**Paint and interior trim swatches.** One new runtime component, `VehicleFinishSwatches`,
+used twice: once for the body's single `Car Paint` material (five colours) and once for
+the eight interior materials (four texture sets each). It implements `IExhibitMachinery`
+and is driven by `ExhibitFeaturePanel` unchanged - a finish is exactly the shape that
+interface already describes. Both live on their own child node of the exhibit, because
+the panel holds one run of variants and two of them on the same object would be
+indistinguishable to every find-before-create step in the builder.
+
+Written to per-renderer material copies, never to the project's `.mat` files. Verified:
+after cycling every swatch the asset's `_BaseColor` is still the black it shipped with.
+
+**Guided tour.** Eight stops that go round the car rather than listing its eight best
+features - nose, tail, both ends of the left flank, the roof, underneath and twice
+inside - with numbered badges, Next/Back, the info panel and the idle attract loop, all
+of it the shared runtime. Badge positions were checked for overlap before the first play
+run: no pair closer than 21.5 mm with a badge diameter of 16 mm.
+
+### Then a presentation pass, on request
+
+- **The cabin no longer blows out with the lights on.** The cabin lamp was at 0.09 with a
+  range of 0.45 car-lengths; two centimetres from a headlining, inverse-square made that
+  a floodlight, and the whole interior clipped to white the moment the doors opened. Now
+  0.012 over 0.26 car-lengths, with the four interior emissive meshes held down from
+  2.6/2.0/1.3 to 1.5/1.15/0.75.
+- **The swatches are colour chips, not named buttons.** Nine full-width buttons down the
+  right-hand edge became two rows 368 px wide, with the chosen one ringed and named once
+  underneath. The car's own controls shrank from 380x88 to 300x72.
+- **Descriptions shrink to fit rather than running off their background.** The catalogue
+  is data, so a fixed point size was a promise the panel could not keep.
+- **The bodywork has a studio to reflect.** A generated cubemap with three overhead
+  softboxes, set as the custom reflection texture so the backdrop stays the near-black
+  the exhibit is composed against. This is what the paint was missing.
+- **The idle is retuned for the engine an S90 actually has.** See decisions.md - the
+  sound is synthesised, not a recording.
+
+### Still open
+
+Icon glyphs on the car's own controls, scene VFX beyond the existing mote layers, and
+whether to bring in any third-party assets. All raised with the user, none started.
+
 ## Session 18 (2026-09-29) - the door interiors, and the hood and trunk withdrawn
 
 Two changes to the Volvo, both asked for directly.

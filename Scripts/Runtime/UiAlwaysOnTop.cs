@@ -1,49 +1,120 @@
+using System.Collections.Generic;
+using KmaxXR;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.Rendering;
 using UnityEngine.UI;
 
 namespace ViitorCloud.KmaxDisplayExample {
     /// <summary>
-    /// Keeps the world-space interface drawn in front of the anatomy, whatever the anatomy is doing.
+    /// Keeps the world-space interface drawn and raycast in front of the 3D model, whatever the
+    /// model is doing.
     ///
-    /// The canvas is pinned to the virtual screen by the SDK's <c>UIScaler</c>, which parks it at
-    /// the rig's screen plane - always exactly 0.5 m from the viewer. The model sits at the orbit
-    /// centre, which is <c>distance</c> from the viewer. So any time the camera is dollied closer
-    /// than 0.5 m, the model is physically in front of the interface and occludes it: the info
-    /// panel loses its text behind a muscle, which is what was happening.
-    ///
-    /// No depth offset fixes that across the whole dolly range - the distance varies from 0.12 m to
-    /// 1.2 m, and an offset large enough to clear the model when zoomed in would put the panel
-    /// uncomfortably close to the viewer's face. So the interface is taken out of the depth test
-    /// instead, and drawn last.
-    ///
-    /// <c>unity_GUIZTestMode</c> is declared outside the shader's Properties block, so
-    /// <c>Material.HasProperty</c> reports false for it - that is expected and not a reason to skip
-    /// the write. Both <c>UI/Default</c> and the TextMeshPro distance-field shaders read it.
+    /// Visually, every graphic under the canvas receives a material instance with depth testing
+    /// set to <see cref="CompareFunction.Always"/> and a high render queue.
+    /// For input raycasting (both mouse and Kmax 6-DOF stylus), the canvas is given an elevated
+    /// <see cref="Canvas.sortingOrder"/> and a <see cref="KmaxUIRaycaster"/> so UI hits always sort
+    /// ahead of 3D physics hits even when the 3D model pops out in front of the screen plane.
     /// </summary>
     [RequireComponent(typeof(Canvas))]
     public class UiAlwaysOnTop : MonoBehaviour {
         private static readonly int GuiZTestMode = Shader.PropertyToID("unity_GUIZTestMode");
         private static readonly int ZTestMode = Shader.PropertyToID("_ZTestMode");
+        private static readonly List<RaycastResult> RaycastScratch = new List<RaycastResult>();
+        private static PointerEventData _sharedPointerData;
 
         [SerializeField, Tooltip("Render queue the interface is pushed to. Above 3000 puts it after " +
             "the model's transparent passes, which matters for the order the blend happens in.")]
         private int renderQueue = 4000;
+        [SerializeField, Tooltip("Canvas sorting order used so EventSystem and KmaxStylus raycasts " +
+            "always prioritise UI elements over 3D colliders (which sit at sortingOrder 0).")]
+        private int canvasSortingOrder = 100;
         [SerializeField, Tooltip("Re-apply whenever a child is enabled. Needed because the Back and " +
             "navigator buttons are switched off and on as the flow changes.")]
         private bool reapplyOnEnable = true;
 
         private bool _applied;
 
+        private void Awake() {
+            ConfigureCanvasRaycasting();
+        }
+
         private void Start() {
             Apply();
         }
 
         private void OnEnable() {
+            ConfigureCanvasRaycasting();
             if (reapplyOnEnable && _applied) {
                 Apply();
             }
+        }
+
+        private void ConfigureCanvasRaycasting() {
+            Canvas canvas = GetComponent<Canvas>();
+            if (canvas != null) {
+                canvas.overrideSorting = true;
+                canvas.sortingOrder = canvasSortingOrder;
+            }
+
+            if (GetComponent<GraphicRaycaster>() == null) {
+                gameObject.AddComponent<GraphicRaycaster>();
+            }
+
+            if (GetComponent<KmaxUIRaycaster>() == null) {
+                gameObject.AddComponent<KmaxUIRaycaster>();
+            }
+        }
+
+        /// <summary>
+        /// True when the active pointer (mouse or Kmax stylus) is currently over a UI element on a
+        /// Canvas. Used by 3D interactables and camera orbit controllers so clicking or dragging on
+        /// UI never selects or drags the 3D model behind it.
+        /// </summary>
+        public static bool IsPointerOverUi(PointerEventData eventData = null) {
+            if (eventData != null && eventData.pointerCurrentRaycast.gameObject != null) {
+                if (eventData.pointerCurrentRaycast.gameObject.GetComponentInParent<Canvas>() != null) {
+                    return true;
+                }
+            }
+
+            KmaxStylus stylus = KmaxPointer.PointerById(KmaxStylus.UniqueId) as KmaxStylus;
+            if (stylus != null && stylus.Visible) {
+                GameObject stylusHit = stylus.CurrentHitObject;
+                if (stylusHit != null && stylusHit.GetComponentInParent<Canvas>() != null) {
+                    return true;
+                }
+
+                KmaxStylus.PointerState state = stylus.pointerState;
+                if (state.hitSomething && !state.hit3D) {
+                    return true;
+                }
+            }
+
+            EventSystem events = EventSystem.current;
+            if (events == null) {
+                return false;
+            }
+
+            if (_sharedPointerData == null) {
+                _sharedPointerData = new PointerEventData(events);
+            }
+
+            _sharedPointerData.Reset();
+            _sharedPointerData.position = eventData != null ? eventData.position : (Vector2)Input.mousePosition;
+
+            RaycastScratch.Clear();
+            events.RaycastAll(_sharedPointerData, RaycastScratch);
+
+            for (int i = 0; i < RaycastScratch.Count; i++) {
+                GameObject hit = RaycastScratch[i].gameObject;
+                if (hit != null && hit.GetComponentInParent<Canvas>() != null) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -52,6 +123,8 @@ namespace ViitorCloud.KmaxDisplayExample {
         /// </summary>
         [ContextMenu("Apply")]
         public void Apply() {
+            ConfigureCanvasRaycasting();
+
             Graphic[] graphics = GetComponentsInChildren<Graphic>(true);
 
             for (int i = 0; i < graphics.Length; i++) {
@@ -66,6 +139,9 @@ namespace ViitorCloud.KmaxDisplayExample {
                 }
 
                 if (source.name.EndsWith(SuffixMarker)) {
+                    source.SetInt(GuiZTestMode, (int)CompareFunction.Always);
+                    source.SetInt(ZTestMode, (int)CompareFunction.Always);
+                    source.renderQueue = renderQueue;
                     continue;
                 }
 

@@ -25,7 +25,9 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         private const string MenuPath = "Kmax/Engine Exhibit/Set Up Engine Exhibit";
         private const string ModuleRoot = "Assets/Games/kmax-display-example";
         private const string EngineRoot = ModuleRoot + "/CarEngineAnimated - i4";
-        private const string ScenePath = EngineRoot + "/VirtualExhibition WR.unity";
+        // The scene lives under Scenes/ with the other two; only the model, its materials and its
+        // textures stayed in the folder the engine was delivered in.
+        private const string ScenePath = ModuleRoot + "/Scenes/VirtualExhibition WR.unity";
         private const string CatalogPath = ModuleRoot + "/Data/EngineCatalog.asset";
         private const string PoseSetPath = ModuleRoot + "/Data/EngineExplodePoses.asset";
         private const string XrRigPrefabPath = ModuleRoot + "/Plugins/Kmax/com.kmax.xr.core/Editor Resources/XRRig.prefab";
@@ -98,6 +100,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             public Button Reset;
             public Button Next;
             public Button Previous;
+            public Button NextScene;
             public TextMeshProUGUI ExpandLabel;
             public TextMeshProUGUI Counter;
             public TextMeshProUGUI AttractPrompt;
@@ -172,6 +175,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             EyeAnatomySceneUpgrader.UpgradeCamera(camera);
             EyeAnatomySceneUpgrader.UpgradeHotspotPrefab();
             EyeAnatomySceneUpgrader.RemoveDuplicatePens(rig);
+            EyeAnatomySceneUpgrader.UpgradeMaterialsDoubleSided();
 
             KmaxStylus stylus = EyeAnatomySceneUpgrader.BuildStylus(rig, camera);
             AnatomyAudioDirector audio = EyeAnatomySceneUpgrader.BuildAudio();
@@ -336,12 +340,12 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
                     "jacket around them and the main bearing saddles the crankshaft runs in. Nothing here " +
                     "moves, which is why it is the one part left standing when the rest is taken off it."),
 
-                new TeardownStep("EngineBlock/OilPan", new Vector3(0f, -0.26f, 0f),
+                new TeardownStep("EngineBlock/OilPan", new Vector3(0f, -0.34f, 0f),
                     "Oil Pan",
                     "The sump, bolted to the bottom of the block. Oil drains back into it under gravity and " +
                     "the pump draws from it, so it is both the reservoir and the lowest point in the engine."),
 
-                new TeardownStep("Crankshaft", new Vector3(0f, -0.16f, 0f),
+                new TeardownStep("Crankshaft", new Vector3(0f, -0.22f, -0.18f),
                     "Crankshaft & Connecting Rods",
                     "Turns the pistons' up-and-down travel into rotation. The four throws are set 180 degrees " +
                     "apart in the 1-3-4-2 firing order, so one piston is always on a power stroke. This is the " +
@@ -591,14 +595,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         }
 
         private static T LoadOrCreateAsset<T>(string path) where T : ScriptableObject {
-            T existing = AssetDatabase.LoadAssetAtPath<T>(path);
-            if (existing != null) {
-                return existing;
-            }
-
-            T created = ScriptableObject.CreateInstance<T>();
-            AssetDatabase.CreateAsset(created, path);
-            return created;
+            return EyeAnatomyAssetFactory.LoadOrCreate<T>(path);
         }
 
         /// <summary>
@@ -761,75 +758,61 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// </summary>
         private static ExhibitUi BuildUi(GameObject ui, Camera camera, MonoBehaviour machinery) {
             ExhibitUi result = new ExhibitUi();
+            RectTransform rect = ExhibitUiFactory.BuildWorldCanvas(ui, camera);
 
-            Canvas canvas = EyeAnatomySceneUpgrader.GetOrAdd<Canvas>(ui);
-            canvas.renderMode = RenderMode.WorldSpace;
-
-            // The raycaster needs an event camera to turn a pointer position into a ray. Left
-            // empty it falls back to Camera.main, and there is none: the SDK disables the rig
-            // camera's own Camera component and renders through the left and right sub-cameras it
-            // creates at runtime. That is why none of the buttons could be clicked.
-            canvas.worldCamera = camera;
-
-            EyeAnatomySceneUpgrader.GetOrAdd<CanvasScaler>(ui);
-            EyeAnatomySceneUpgrader.GetOrAdd<GraphicRaycaster>(ui);
-            EyeAnatomySceneUpgrader.GetOrAdd<UIScaler>(ui);
-
-            // Takes the interface out of the depth test. The canvas is pinned half a metre from the
-            // viewer while the camera flies to 0.4 m of the model, so without this the engine cuts
-            // through the panel it is being described on.
-            EyeAnatomySceneUpgrader.GetOrAdd<UiAlwaysOnTop>(ui);
-
-            RectTransform rect = ui.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(1920f, 1080f);
-            rect.localPosition = Vector3.zero;
-            rect.localRotation = Quaternion.identity;
-            rect.localScale = new Vector3(0.00017989584f, 0.00017989584f, 0.00017989584f);
+            Vector2 bottomLeft = new Vector2(0f, 0f);
+            Vector2 bottomCenter = new Vector2(0.5f, 0f);
+            Vector2 bottomRight = new Vector2(1f, 0f);
 
             BuildTitle(rect);
 
+            // Bottom-Left: Expand & Back
             result.Expand = BuildButton(rect, "ExpandButton", "Pull engine apart",
-                new Vector2(0f, 0f), new Vector2(24f, 24f), new Vector2(440f, 88f));
+                bottomLeft, new Vector2(24f, 24f), new Vector2(166f, 36f), 14f);
             result.Back = BuildButton(rect, "BackButton", "Back",
-                new Vector2(0f, 0f), new Vector2(24f, 124f), new Vector2(300f, 88f));
-            result.Reset = BuildButton(rect, "ResetButton", "Reset view",
-                new Vector2(1f, 0f), new Vector2(-24f, 24f), new Vector2(440f, 88f));
+                bottomLeft, new Vector2(24f, 68f), new Vector2(132f, 32f), 13.5f);
+
+            // Bottom-Center: < Back, Counter, Next >, AttractPrompt
             result.Previous = BuildButton(rect, "PreviousButton", "< Back",
-                new Vector2(0.5f, 0f), new Vector2(-250f, 32f), new Vector2(200f, 88f));
+                bottomCenter, new Vector2(-116f, 24f), new Vector2(84f, 34f), 14f);
+            result.Counter = BuildLabel(rect, "PartCounter", "-", 14f,
+                bottomCenter, new Vector2(0f, 24f), new Vector2(120f, 34f), TextAlignmentOptions.Center);
+            result.Counter.color = new Color(0.76f, 0.90f, 1.00f, 0.95f);
             result.Next = BuildButton(rect, "NextButton", "Next >",
-                new Vector2(0.5f, 0f), new Vector2(250f, 32f), new Vector2(200f, 88f));
+                bottomCenter, new Vector2(116f, 24f), new Vector2(84f, 34f), 14f);
+            result.AttractPrompt = BuildLabel(rect, "AttractPrompt", "Touch the engine to explore it", 14f,
+                bottomCenter, new Vector2(0f, 64f), new Vector2(420f, 24f), TextAlignmentOptions.Center);
+            result.AttractPrompt.color = new Color(0.75f, 0.90f, 1.00f, 0.92f);
+
+            // Bottom-Right: Reset view & Next Scene side-by-side
+            result.Reset = BuildButton(rect, "ResetButton", "Reset view",
+                bottomRight, new Vector2(-168f, 24f), new Vector2(134f, 36f), 14f);
+            result.NextScene = BuildButton(rect, "NextSceneButton", "Next Scene",
+                bottomRight, new Vector2(-24f, 24f), new Vector2(136f, 36f), 14f);
 
             result.ExpandLabel = result.Expand.GetComponentInChildren<TextMeshProUGUI>(true);
-            result.Counter = BuildLabel(rect, "PartCounter", "-", 34f,
-                new Vector2(0.5f, 0f), new Vector2(0f, 32f), new Vector2(280f, 88f), TextAlignmentOptions.Center);
-            result.AttractPrompt = BuildLabel(rect, "AttractPrompt", "Touch the engine to explore it", 32f,
-                new Vector2(0.5f, 0f), new Vector2(0f, 140f), new Vector2(900f, 56f), TextAlignmentOptions.Center);
-            result.InfoPanel = BuildInfoPanel(rect);
+
+            // Top-Left below Title: compact Transparency & Build Variations
             BuildFeatureControls(rect, machinery, result);
+
+            // Top-Right: Information text panel (InfoPanel)
+            result.InfoPanel = BuildInfoPanel(rect);
 
             EyeAnatomySceneUpgrader.AddMotion(result.Expand.gameObject, true);
             EyeAnatomySceneUpgrader.AddMotion(result.Back.gameObject, false);
             EyeAnatomySceneUpgrader.AddMotion(result.Reset.gameObject, false);
+            EyeAnatomySceneUpgrader.AddMotion(result.NextScene.gameObject, false);
             EyeAnatomySceneUpgrader.AddMotion(result.Previous.gameObject, false);
             EyeAnatomySceneUpgrader.AddMotion(result.Next.gameObject, false);
 
             return result;
         }
 
-        /// <summary>
-        /// The see-through button and one button per build variant, down the top-left edge.
-        ///
-        /// Top-left is the one band of the canvas nothing else uses: the flow buttons are stacked
-        /// bottom-left, the navigator is bottom-centre, Reset is bottom-right and the description
-        /// panel is on the right. It also separates them by role - these two change what the model
-        /// *is*, rather than where the viewer is looking at it from.
-        ///
-        /// The variant count comes from the model, so a model with no variants gets no buttons
-        /// rather than four dead ones.
-        /// </summary>
         private static void BuildFeatureControls(RectTransform parent, MonoBehaviour machinery, ExhibitUi result) {
+            Vector2 topLeft = new Vector2(0f, 1f);
+
             result.Transparency = BuildButton(parent, "TransparencyButton", "See inside",
-                new Vector2(0f, 1f), new Vector2(24f, -24f), new Vector2(360f, 80f));
+                topLeft, new Vector2(24f, -56f), new Vector2(146f, 32f), 13.5f);
             result.TransparencyLabel = result.Transparency.GetComponentInChildren<TextMeshProUGUI>(true);
             EyeAnatomySceneUpgrader.AddMotion(result.Transparency.gameObject, false);
 
@@ -839,91 +822,34 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
                 return;
             }
 
-            TextMeshProUGUI caption = BuildLabel(parent, "BuildCaption", "BUILD", 26f,
-                new Vector2(0f, 1f), new Vector2(24f, -120f), new Vector2(360f, 32f), TextAlignmentOptions.Left);
-            caption.color = new Color(0.62f, 0.68f, 0.78f);
+            TextMeshProUGUI caption = BuildLabel(parent, "BuildCaption", "BUILD", 11.5f,
+                topLeft, new Vector2(24f, -98f), new Vector2(146f, 18f), TextAlignmentOptions.Left);
+            caption.color = new Color(0.56f, 0.82f, 0.98f, 0.90f);
+            caption.fontStyle = FontStyles.Bold;
 
             result.Variations = new Button[count];
             for (int i = 0; i < count; i++) {
+                float y = -120f - i * 36f;
                 result.Variations[i] = BuildButton(parent, "VariationButton" + (i + 1), features.GetVariationName(i),
-                    new Vector2(0f, 1f), new Vector2(24f, -160f - i * 70f), new Vector2(360f, 62f));
+                    topLeft, new Vector2(24f, y), new Vector2(146f, 30f), 13f);
                 EyeAnatomySceneUpgrader.AddMotion(result.Variations[i].gameObject, false);
             }
         }
 
         private static void BuildTitle(RectTransform parent) {
-            TextMeshProUGUI title = BuildLabel(parent, "Title", "Inline-Four Engine", 52f,
-                new Vector2(0.5f, 1f), new Vector2(0f, -48f), new Vector2(1200f, 72f), TextAlignmentOptions.Center);
+            TextMeshProUGUI title = BuildLabel(parent, "Title", "Inline-Four Engine", 22f,
+                new Vector2(0f, 1f), new Vector2(24f, -18f), new Vector2(360f, 28f), TextAlignmentOptions.Left);
             title.fontStyle = FontStyles.Bold;
         }
 
-        /// <summary>
-        /// The panel is left inactive, which is what <see cref="AnatomyInfoPanel"/> expects: it
-        /// initialises lazily on the first Show precisely because Unity defers Awake on an inactive
-        /// object.
-        /// </summary>
         private static AnatomyInfoPanel BuildInfoPanel(RectTransform parent) {
-            Transform existing = parent.Find("InfoPanel");
-            GameObject panel;
-
-            if (existing != null) {
-                panel = existing.gameObject;
-            } else {
-                panel = new GameObject("InfoPanel", typeof(RectTransform));
-                panel.transform.SetParent(parent, false);
-                Undo.RegisterCreatedObjectUndo(panel, "Create InfoPanel");
-            }
-
-            RectTransform rect = panel.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(1f, 0.5f);
-            rect.anchorMax = new Vector2(1f, 0.5f);
-            rect.pivot = new Vector2(1f, 0.5f);
-            rect.sizeDelta = new Vector2(650f, 260f);
-            rect.anchoredPosition = new Vector2(-24f, 0f);
-
-            Image background = EyeAnatomySceneUpgrader.GetOrAdd<Image>(panel);
-            background.color = new Color(0.06f, 0.07f, 0.09f, 0.82f);
-            background.raycastTarget = false;
-
-            TextMeshProUGUI label = BuildLabel(rect, "Label", "", 40f,
-                new Vector2(0.5f, 1f), new Vector2(0f, -16f), new Vector2(-56f, 64f), TextAlignmentOptions.TopLeft);
-            label.fontStyle = FontStyles.Bold;
-            StretchHorizontally(label.rectTransform);
-
-            TextMeshProUGUI description = BuildLabel(rect, "Description", "", 28f,
-                new Vector2(0.5f, 1f), new Vector2(0f, -88f), new Vector2(-56f, -120f), TextAlignmentOptions.TopLeft);
-            description.textWrappingMode = TextWrappingModes.Normal;
-            StretchHorizontally(description.rectTransform);
-            description.rectTransform.anchorMin = new Vector2(0f, 0f);
-            description.rectTransform.anchorMax = new Vector2(1f, 1f);
-            description.rectTransform.offsetMin = new Vector2(28f, 24f);
-            description.rectTransform.offsetMax = new Vector2(-28f, -88f);
-
-            AnatomyInfoPanel component = EyeAnatomySceneUpgrader.GetOrAdd<AnatomyInfoPanel>(panel);
-            SerializedObject so = new SerializedObject(component);
-            EyeAnatomySceneUpgrader.SetIfPresent(so, "panelRoot", panel);
-            EyeAnatomySceneUpgrader.SetIfPresent(so, "titleLabel", label);
-            EyeAnatomySceneUpgrader.SetIfPresent(so, "descriptionLabel", description);
-            so.ApplyModifiedPropertiesWithoutUndo();
-
-            panel.SetActive(false);
-            return component;
+            return ExhibitUiFactory.BuildInfoPanel(parent, new Vector2(1f, 1f),
+                new Vector2(-24f, -24f), new Vector2(410f, 145f));
         }
 
-        private static void StretchHorizontally(RectTransform rect) {
-            rect.anchorMin = new Vector2(0f, rect.anchorMin.y);
-            rect.anchorMax = new Vector2(1f, rect.anchorMax.y);
-            rect.offsetMin = new Vector2(28f, rect.offsetMin.y);
-            rect.offsetMax = new Vector2(-28f, rect.offsetMax.y);
-        }
-
-        /// <summary>
-        /// Both of these now live on <see cref="ExhibitUiFactory"/>, shared with the other
-        /// exhibits. They are kept as wrappers so the layout code above still reads as layout.
-        /// </summary>
         private static Button BuildButton(RectTransform parent, string name, string label,
-            Vector2 anchor, Vector2 anchoredPosition, Vector2 size) {
-            return ExhibitUiFactory.BuildButton(parent, name, label, anchor, anchoredPosition, size);
+            Vector2 anchor, Vector2 anchoredPosition, Vector2 size, float fontSize = 14f) {
+            return ExhibitUiFactory.BuildButton(parent, name, label, anchor, anchoredPosition, size, fontSize);
         }
 
         private static TextMeshProUGUI BuildLabel(RectTransform parent, string name, string content,
@@ -1047,6 +973,8 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             EyeAnatomySceneUpgrader.SetIfPresent(gateSo, "explodeView", explode);
             EyeAnatomySceneUpgrader.SetIfPresent(gateSo, "machinery", machinery);
             gateSo.ApplyModifiedPropertiesWithoutUndo();
+
+            EyeAnatomySceneUpgrader.WireSceneSwitcher(exhibit, ui.NextScene, audio, "VolvoS90");
         }
 
         private static void SetFloat(SerializedObject so, string fieldName, float value) {

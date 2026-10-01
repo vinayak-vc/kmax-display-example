@@ -58,6 +58,7 @@ namespace ViitorCloud.KmaxDisplayExample {
         [SerializeField, Tooltip("The view returning home.")] private AudioClip resetOverride;
 
         private AudioClip _hoverClip;
+        private AudioClip _clickClip;
         private AudioClip _selectClip;
         private AudioClip _navigateClip;
         private AudioClip _backClip;
@@ -68,6 +69,7 @@ namespace ViitorCloud.KmaxDisplayExample {
         private float _fadeProgress;
         private float _duckProgress;
         private float _lastHoverTime = -1f;
+        private int _lastClickCueFrame = -1;
 
         /// <summary>
         /// Minimum gap between hover cues. The pointer can cross several badges in a moment, and
@@ -75,20 +77,61 @@ namespace ViitorCloud.KmaxDisplayExample {
         /// </summary>
         private const float HoverCooldown = 0.08f;
 
+        private static AnatomyAudioDirector _persistentInstance;
+
+        public static AnatomyAudioDirector Instance {
+            get { return _persistentInstance; }
+        }
+
         private void Awake() {
+            if (_persistentInstance != null && _persistentInstance != this) {
+                AudioSource[] duplicateSources = GetComponents<AudioSource>();
+                for (int i = 0; i < duplicateSources.Length; i++) {
+                    if (duplicateSources[i] != null) {
+                        duplicateSources[i].Stop();
+                        Destroy(duplicateSources[i]);
+                    }
+                }
+
+                enabled = false;
+                return;
+            }
+
+            _persistentInstance = this;
+            if (transform.parent != null) {
+                transform.SetParent(null);
+            }
+
+            DontDestroyOnLoad(gameObject);
             EnsureSources();
             BuildClips();
         }
 
+        private void OnDestroy() {
+            if (_persistentInstance == this) {
+                _persistentInstance = null;
+            }
+        }
+
         private void Start() {
+            if (_persistentInstance != null && _persistentInstance != this) {
+                return;
+            }
+
             if (!playMusicOnStart) {
                 return;
             }
 
-            PlayMusic();
+            if (musicSource == null || !musicSource.isPlaying) {
+                PlayMusic();
+            }
         }
 
         private void Update() {
+            if (_persistentInstance != null && _persistentInstance != this) {
+                return;
+            }
+
             if (musicSource == null) {
                 return;
             }
@@ -111,7 +154,16 @@ namespace ViitorCloud.KmaxDisplayExample {
         /// Starts the background pad, fading it up from silence.
         /// </summary>
         public void PlayMusic() {
+            if (_persistentInstance != null && _persistentInstance != this) {
+                _persistentInstance.PlayMusic();
+                return;
+            }
+
             if (musicSource == null || musicSource.clip == null) {
+                return;
+            }
+
+            if (musicSource.isPlaying) {
                 return;
             }
 
@@ -124,12 +176,22 @@ namespace ViitorCloud.KmaxDisplayExample {
         /// Stops the background pad immediately.
         /// </summary>
         public void StopMusic() {
+            if (_persistentInstance != null && _persistentInstance != this) {
+                _persistentInstance.StopMusic();
+                return;
+            }
+
             if (musicSource != null) {
                 musicSource.Stop();
             }
         }
 
         public void PlayHover() {
+            if (_persistentInstance != null && _persistentInstance != this) {
+                _persistentInstance.PlayHover();
+                return;
+            }
+
             // Rate-limited rather than pitch-varied: a hover cue that changes pitch draws attention
             // to itself, and this one should sit just under notice.
             if (Time.unscaledTime - _lastHoverTime < HoverCooldown) {
@@ -137,11 +199,37 @@ namespace ViitorCloud.KmaxDisplayExample {
             }
 
             _lastHoverTime = Time.unscaledTime;
-            PlayCue(_hoverClip, 0.35f, 1f, false);
+            PlayCue(_hoverClip, 0.38f, 1f, false);
+            PulseStylus(0.010f, 7);
+        }
+
+        /// <summary>
+        /// Plays a crisp, modern glass/marimba UI button click cue.
+        /// </summary>
+        public void PlayClick() {
+            if (_persistentInstance != null && _persistentInstance != this) {
+                _persistentInstance.PlayClick();
+                return;
+            }
+
+            if (_lastClickCueFrame == Time.frameCount) {
+                return;
+            }
+
+            _lastClickCueFrame = Time.frameCount;
+            PlayCue(_clickClip, 0.65f, 1f, false);
+            PulseStylus(0.016f, 12);
         }
 
         public void PlaySelect() {
-            PlayCue(_selectClip, 1f, 1f, true);
+            if (_persistentInstance != null && _persistentInstance != this) {
+                _persistentInstance.PlaySelect();
+                return;
+            }
+
+            _lastClickCueFrame = Time.frameCount;
+            PlayCue(_selectClip, 0.85f, 1f, true);
+            PulseStylus(0.025f, 18);
         }
 
         /// <summary>
@@ -149,23 +237,63 @@ namespace ViitorCloud.KmaxDisplayExample {
         /// forward through the catalog and falls when moving back, so the direction is audible.
         /// </summary>
         public void PlayNavigate(bool forward) {
-            PlayCue(_navigateClip, 0.7f, forward ? 1.06f : 0.94f, false);
+            if (_persistentInstance != null && _persistentInstance != this) {
+                _persistentInstance.PlayNavigate(forward);
+                return;
+            }
+
+            _lastClickCueFrame = Time.frameCount;
+            PlayCue(_navigateClip, 0.68f, forward ? 1.08f : 0.94f, false);
+            PulseStylus(0.018f, 14);
         }
 
         public void PlayBack() {
-            PlayCue(_backClip, 0.8f, 1f, false);
+            if (_persistentInstance != null && _persistentInstance != this) {
+                _persistentInstance.PlayBack();
+                return;
+            }
+
+            _lastClickCueFrame = Time.frameCount;
+            PlayCue(_backClip, 0.78f, 1f, false);
+            PulseStylus(0.022f, 15);
         }
 
         public void PlayExpand() {
-            PlayCue(_expandClip, 0.9f, 1f, true);
+            if (_persistentInstance != null && _persistentInstance != this) {
+                _persistentInstance.PlayExpand();
+                return;
+            }
+
+            PlayCue(_expandClip, 0.85f, 1f, true);
+            PulseStylus(0.035f, 20);
         }
 
         public void PlayCollapse() {
-            PlayCue(_collapseClip, 0.9f, 0.92f, true);
+            if (_persistentInstance != null && _persistentInstance != this) {
+                _persistentInstance.PlayCollapse();
+                return;
+            }
+
+            PlayCue(_collapseClip, 0.85f, 0.92f, true);
+            PulseStylus(0.030f, 16);
         }
 
         public void PlayReset() {
-            PlayCue(_resetClip, 0.85f, 1f, false);
+            if (_persistentInstance != null && _persistentInstance != this) {
+                _persistentInstance.PlayReset();
+                return;
+            }
+
+            _lastClickCueFrame = Time.frameCount;
+            PlayCue(_resetClip, 0.80f, 1f, false);
+            PulseStylus(0.035f, 18);
+        }
+
+        private static void PulseStylus(float duration, int strength) {
+            KmaxXR.KmaxStylus stylus = KmaxXR.KmaxPointer.PointerById(KmaxXR.KmaxStylus.UniqueId) as KmaxXR.KmaxStylus;
+            if (stylus != null && stylus.Visible) {
+                stylus.VibrationOnce(duration, strength);
+            }
         }
 
         private void PlayCue(AudioClip clip, float volumeScale, float pitch, bool duck) {
@@ -211,13 +339,14 @@ namespace ViitorCloud.KmaxDisplayExample {
                     : ProceduralAudio.CreatePad(padRootHz, padLoopSeconds);
             }
 
-            _hoverClip = hoverOverride != null ? hoverOverride : ProceduralAudio.CreateBlip(1560f, 0.05f);
-            _selectClip = selectOverride != null ? selectOverride : ProceduralAudio.CreateChime(784f, 1.1f, 0.95f);
-            _navigateClip = navigateOverride != null ? navigateOverride : ProceduralAudio.CreateBlip(1046f, 0.09f);
-            _backClip = backOverride != null ? backOverride : ProceduralAudio.CreateThud(210f, 0.3f);
+            _hoverClip = hoverOverride != null ? hoverOverride : ProceduralAudio.CreateBlip(680f, 0.052f);
+            _clickClip = ProceduralAudio.CreateUiClick(587.33f, 0.085f);
+            _selectClip = selectOverride != null ? selectOverride : ProceduralAudio.CreateChime(523.25f, 0.72f, 0.95f);
+            _navigateClip = navigateOverride != null ? navigateOverride : ProceduralAudio.CreateUiClick(659.25f, 0.080f);
+            _backClip = backOverride != null ? backOverride : ProceduralAudio.CreateThud(392f, 0.24f);
             _expandClip = expandOverride != null ? expandOverride : ProceduralAudio.CreateWhoosh(0.65f, true);
             _collapseClip = collapseOverride != null ? collapseOverride : ProceduralAudio.CreateWhoosh(0.5f, false);
-            _resetClip = resetOverride != null ? resetOverride : ProceduralAudio.CreateThud(165f, 0.36f);
+            _resetClip = resetOverride != null ? resetOverride : ProceduralAudio.CreateThud(349.23f, 0.26f);
         }
     }
 }

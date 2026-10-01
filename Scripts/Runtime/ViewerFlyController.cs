@@ -34,6 +34,13 @@ namespace ViitorCloud.KmaxDisplayExample {
         private float minDistance = 0.12f;
         [SerializeField, Tooltip("Maximum distance to focal center in metres.")]
         private float maxDistance = 1.2f;
+        [SerializeField, Tooltip("Yaw the view rests at and returns to, in degrees.")]
+        private float homeYaw;
+        [SerializeField, Tooltip("Pitch the view rests at and returns to, in degrees. Positive looks " +
+            "down on the model. Zero is level with its centre, which is right for something roughly " +
+            "spherical and wrong for anything standing on a surface - a floor seen from dead level " +
+            "is a horizontal line.")]
+        private float homePitch;
 
         [Header("Speeds")]
         [SerializeField, Tooltip("Degrees turned per pixel of mouse drag.")]
@@ -121,11 +128,11 @@ namespace ViitorCloud.KmaxDisplayExample {
                 exhibitController = GetComponent<EyeAnatomyController>();
             }
 
-            _currentYaw = 0f;
-            _currentPitch = 0f;
+            _currentYaw = homeYaw;
+            _currentPitch = Mathf.Clamp(homePitch, minPitch, maxPitch);
             _currentDistance = defaultDistance;
-            _targetYaw = 0f;
-            _targetPitch = 0f;
+            _targetYaw = _currentYaw;
+            _targetPitch = _currentPitch;
             _targetDistance = defaultDistance;
 
             UpdateRigTransformImmediate();
@@ -183,7 +190,7 @@ namespace ViitorCloud.KmaxDisplayExample {
         /// </summary>
         public void ResetView(bool animated = true) {
             focalCenter = Vector3.zero;
-            FlyTo(0f, 0f, defaultDistance, animated);
+            FlyTo(homeYaw, homePitch, defaultDistance, animated);
         }
 
         /// <summary>
@@ -460,33 +467,7 @@ namespace ViitorCloud.KmaxDisplayExample {
         /// stopped mouse drag from orbiting over the very thing it is meant to turn.
         /// </summary>
         private bool IsPointerOverUI() {
-            EventSystem events = EventSystem.current;
-            if (events == null) {
-                return false;
-            }
-
-            if (_pointerData == null) {
-                _pointerData = new PointerEventData(events);
-            }
-
-            _pointerData.Reset();
-            _pointerData.position = Input.mousePosition;
-
-            RaycastScratch.Clear();
-            events.RaycastAll(_pointerData, RaycastScratch);
-
-            for (int i = 0; i < RaycastScratch.Count; i++) {
-                GameObject hit = RaycastScratch[i].gameObject;
-                if (hit != null && hit.GetComponentInParent<Canvas>() != null) {
-                    return true;
-                }
-            }
-
-            return false;
+            return UiAlwaysOnTop.IsPointerOverUi();
         }
-
-        private static readonly System.Collections.Generic.List<RaycastResult> RaycastScratch =
-            new System.Collections.Generic.List<RaycastResult>();
-        private PointerEventData _pointerData;
     }
 }

@@ -1,0 +1,26 @@
+{
+	"name": "KmaxShowcase.Editor",
+	"rootNamespace": "ViitorCloud.KmaxShowcase.Editor",
+	"references": [
+		"KmaxShowcase",
+		"KmaxXR.Core",
+		"Kmax.InputModule",
+		"UnityEngine.UI",
+		"Unity.TextMeshPro",
+		"Unity.RenderPipelines.Universal.Runtime",
+		"Unity.RenderPipelines.Core.Runtime"
+	],
+	"includePlatforms": [
+		"Editor"
+	],
+	"excludePlatforms": [],
+	"allowUnsafeCode": false,
+	"overrideReferences": false,
+	"precompiledReferences": [],
+	"autoReferenced": false,
+	"defineConstraints": [
+		"!KMAX_AIO_K1"
+	],
+	"versionDefines": [],
+	"noEngineReferences": false
+}

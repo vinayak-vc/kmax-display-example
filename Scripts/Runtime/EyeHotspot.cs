@@ -31,37 +31,39 @@ namespace ViitorCloud.KmaxDisplayExample {
         private Renderer haloRenderer;
 
         [Header("Badge Colors")]
-        [SerializeField] private Color idleBadgeColor = new Color(0.9f, 0.95f, 1f, 0.85f);
-        [SerializeField] private Color hoverBadgeColor = new Color(0.5f, 0.85f, 1f, 1f);
-        [SerializeField] private Color selectedBadgeColor = new Color(1f, 0.82f, 0.35f, 1f);
+        [SerializeField] private Color idleBadgeColor = new Color(0.22f, 0.78f, 0.98f, 0.92f);
+        [SerializeField] private Color hoverBadgeColor = new Color(0.28f, 0.98f, 0.86f, 1.00f);
+        [SerializeField] private Color selectedBadgeColor = new Color(1.00f, 0.78f, 0.22f, 1.00f);
 
         [Header("Text Colors")]
-        [SerializeField] private Color idleTextColor = new Color(1f, 1f, 1f, 0.95f);
+        [SerializeField] private Color idleTextColor = new Color(1f, 1f, 1f, 0.98f);
         [SerializeField] private Color hoverTextColor = new Color(1f, 1f, 1f, 1f);
-        [SerializeField] private Color selectedTextColor = new Color(1f, 0.95f, 0.75f, 1f);
+        [SerializeField] private Color selectedTextColor = new Color(1f, 0.98f, 0.85f, 1f);
 
         [Header("Animation & Alive Feel")]
-        [SerializeField, Range(1f, 1.5f)] private float hoverScale = 1.18f;
-        [SerializeField, Range(0f, 0.1f)] private float pulseAmplitude = 0.035f;
-        [SerializeField, Range(0.5f, 5f)] private float pulseSpeed = 2.2f;
+        [SerializeField, Range(1f, 1.5f)] private float hoverScale = 1.24f;
+        [SerializeField, Range(0f, 0.1f)] private float pulseAmplitude = 0.045f;
+        [SerializeField, Range(0.5f, 5f)] private float pulseSpeed = 2.4f;
         [SerializeField, Range(1f, 1.6f), Tooltip("Extra scale a selected badge holds over an idle one.")]
-        private float selectedScale = 1.22f;
+        private float selectedScale = 1.28f;
         [SerializeField, Tooltip("Metres the badge lifts towards the viewer while hovered.")]
-        private float hoverLift = 0.0025f;
+        private float hoverLift = 0.0032f;
+        [SerializeField, Tooltip("Amplitude in local units of the organic vertical floating bob.")]
+        private float floatBobAmplitude = 0.035f;
 
         [Header("Pop-in")]
         [SerializeField, Tooltip("Scale up from nothing when the eye opens, rather than appearing all at once.")]
         private bool animatePopIn = true;
         [SerializeField, Tooltip("Seconds one badge takes to pop in.")]
-        private float popInDuration = 0.34f;
+        private float popInDuration = 0.38f;
         [SerializeField, Tooltip("Seconds of delay added per badge index, so they arrive as a sweep.")]
-        private float popInStagger = 0.035f;
+        private float popInStagger = 0.038f;
         [SerializeField, Range(1f, 1.8f), Tooltip("How far past full size the pop-in overshoots before settling.")]
-        private float popInOvershoot = 1.25f;
+        private float popInOvershoot = 1.28f;
 
         [Header("Press")]
         [SerializeField, Range(0.5f, 1f), Tooltip("Scale the badge compresses to at the moment of the press.")]
-        private float pressScale = 0.82f;
+        private float pressScale = 0.80f;
         [SerializeField, Tooltip("Seconds the press punch takes to recover.")]
         private float pressRecoverDuration = 0.28f;
 
@@ -75,7 +77,7 @@ namespace ViitorCloud.KmaxDisplayExample {
         [Header("Input")]
         [SerializeField, Tooltip("Pixels the pointer may travel between press and release and still count " +
             "as a click. Beyond this the viewer was dragging the view, not picking a part.")]
-        private float clickDragTolerance = 12f;
+        private float clickDragTolerance = 18f;
 
         private MaterialPropertyBlock _propertyBlock;
         private int _partIndex = -1;
@@ -121,6 +123,12 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             if (numberText == null) {
                 numberText = visualRoot.GetComponentInChildren<TextMeshPro>();
+            }
+
+            // Generous hit-sphere padding (1.4x visual radius) makes picking badges with the 3D stylus effortless.
+            SphereCollider sphere = GetComponent<SphereCollider>();
+            if (sphere != null && sphere.radius < 0.68f) {
+                sphere.radius = 0.68f;
             }
 
             _propertyBlock = new MaterialPropertyBlock();
@@ -191,6 +199,10 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         public void OnPointerDown(PointerEventData eventData) {
+            if (UiAlwaysOnTop.IsPointerOverUi(eventData)) {
+                return;
+            }
+
             _pressProgress = 1f;
         }
 
@@ -199,6 +211,10 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         public void OnPointerClick(PointerEventData eventData) {
+            if (UiAlwaysOnTop.IsPointerOverUi(eventData)) {
+                return;
+            }
+
             // The same press can arrive twice in one frame when the Kmax driver emulates the mouse
             // alongside the stylus pointer. One selection per frame is always the right answer.
             if (Time.frameCount == _lastClickFrame) {
@@ -219,6 +235,10 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         public void OnPointerEnter(PointerEventData eventData) {
+            if (UiAlwaysOnTop.IsPointerOverUi(eventData)) {
+                return;
+            }
+
             SetHovered(true);
         }
 
@@ -310,8 +330,8 @@ namespace ViitorCloud.KmaxDisplayExample {
                 return;
             }
 
-            // Offset by index so the badges breathe independently rather than in lockstep.
-            float phaseOffset = _partIndex >= 0 ? _partIndex * 0.45f : 0f;
+            // Offset by index so the badges breathe and float independently rather than in lockstep.
+            float phaseOffset = _partIndex >= 0 ? _partIndex * 0.65f : 0f;
             float pulse = 1f + pulseAmplitude * Mathf.Sin(Time.time * pulseSpeed + phaseOffset);
 
             float scale = Mathf.Lerp(1f, hoverScale, _hoverProgress);
@@ -322,10 +342,12 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             visualRoot.localScale = _initialVisualScale * scale;
 
+            float bob = floatBobAmplitude * (Mathf.Sin(Time.time * (pulseSpeed * 0.75f) + phaseOffset) * 0.5f + 0.5f);
+            visualRoot.localPosition = _initialVisualLocalPosition + new Vector3(0f, bob, 0f);
+
             // Lift towards the viewer on hover. Local -Z is towards the viewer on this rig, and the
             // badge is billboarded, so its own back axis always points at the camera.
             float lift = hoverLift * Mathf.Max(_hoverProgress, _selectProgress);
-            visualRoot.localPosition = _initialVisualLocalPosition;
             if (lift > 0f) {
                 visualRoot.position -= visualRoot.forward * lift;
             }

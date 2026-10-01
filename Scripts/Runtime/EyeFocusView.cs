@@ -149,6 +149,21 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         public void Focus(Transform part) {
+            Focus(part, true);
+        }
+
+        /// <summary>
+        /// Frames a part, optionally leaving the rest of the model as it is.
+        ///
+        /// <paramref name="ghostOthers"/> is what a catalogue entry's <c>KeepOthersSolid</c> ends up
+        /// driving. Fading everything else is right for a part that would otherwise be buried inside
+        /// the model, and wrong for one that is already on the outside of it: ghosting a car's
+        /// bodywork to show its wheel throws away the paint the viewer has just chosen, and they
+        /// cannot see the thing they changed.
+        ///
+        /// The single-argument overload keeps the old behaviour for every existing caller.
+        /// </summary>
+        public void Focus(Transform part, bool ghostOthers) {
             if (modelRoot == null) {
                 return;
             }
@@ -191,7 +206,7 @@ namespace ViitorCloud.KmaxDisplayExample {
             Vector3 anchor = focusAnchor != null ? focusAnchor.position : Vector3.zero;
             Vector3 worldTarget = anchor - modelRoot.rotation * (localCentre * targetScale);
 
-            if (fadeOtherParts) {
+            if (fadeOtherParts && ghostOthers) {
                 SetFadedExcept(part);
             }
 
@@ -233,17 +248,27 @@ namespace ViitorCloud.KmaxDisplayExample {
             }
         }
 
+        private void OnDisable() {
+            if (isFocused) {
+                SetFadedExcept(null);
+            }
+        }
+
         /// <summary>
         /// Fades every part except the given one, or restores all of them when passed null.
         /// </summary>
         private void SetFadedExcept(Transform part) {
-            if (modelRenderers == null) {
+            // Both arrays, not just the first. A domain reload while play mode is running - which
+            // is what an editor script recompiling under a running scene causes - clears every
+            // field that is not serialised and does not call Awake again, so these can come back
+            // half populated. Guarding only the renderer list left the material list to fault.
+            if (modelRenderers == null || originalMaterials == null) {
                 return;
             }
 
             for (int i = 0; i < modelRenderers.Length; i++) {
                 Renderer renderer = modelRenderers[i];
-                if (renderer == null) {
+                if (renderer == null || i >= originalMaterials.Length || originalMaterials[i] == null) {
                     continue;
                 }
 

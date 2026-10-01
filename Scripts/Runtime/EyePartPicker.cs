@@ -38,6 +38,10 @@ namespace ViitorCloud.KmaxDisplayExample {
                 return;
             }
 
+            if (UiAlwaysOnTop.IsPointerOverUi(eventData)) {
+                return;
+            }
+
             // The same press can arrive twice in one frame when the Kmax driver emulates the mouse
             // alongside the stylus pointer.
             if (Time.frameCount == _lastClickFrame) {

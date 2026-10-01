@@ -32,8 +32,17 @@ namespace ViitorCloud.KmaxDisplayExample {
             "after load, and the SDK may rebuild them when the display mode changes.")]
         private float recheckInterval = 1f;
 
+        private static readonly int CullId = Shader.PropertyToID("_Cull");
+        private static readonly int BuiltinCullModeId = Shader.PropertyToID("_BUILTIN_CullMode");
+        private static readonly int CullModeId = Shader.PropertyToID("_CullMode");
+        private static readonly int RenderFaceId = Shader.PropertyToID("_RenderFace");
+
         private int _configuredCount = -1;
         private float _nextCheck;
+
+        private void Awake() {
+            ApplyDoubleSidedMaterials();
+        }
 
         private void Start() {
             if (cameraRoot == null) {
@@ -41,6 +50,7 @@ namespace ViitorCloud.KmaxDisplayExample {
             }
 
             Configure();
+            ApplyDoubleSidedMaterials();
         }
 
         private void Update() {
@@ -56,6 +66,48 @@ namespace ViitorCloud.KmaxDisplayExample {
             }
 
             Configure();
+        }
+
+        /// <summary>
+        /// Ensures every renderer in the scene renders double-sided (Cull Off) so interior and
+        /// back-facing surfaces of exploded or cutaway models are always visible.
+        /// </summary>
+        public static void ApplyDoubleSidedMaterials() {
+            Renderer[] renderers = Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (int i = 0; i < renderers.Length; i++) {
+                if (renderers[i] == null) {
+                    continue;
+                }
+
+                Material[] materials = renderers[i].sharedMaterials;
+                for (int j = 0; j < materials.Length; j++) {
+                    MakeMaterialDoubleSided(materials[j]);
+                }
+            }
+        }
+
+        public static void MakeMaterialDoubleSided(Material material) {
+            if (material == null) {
+                return;
+            }
+
+            material.doubleSidedGI = true;
+
+            if (material.HasProperty(CullId)) {
+                material.SetFloat(CullId, (float)UnityEngine.Rendering.CullMode.Off);
+            }
+
+            if (material.HasProperty(BuiltinCullModeId)) {
+                material.SetFloat(BuiltinCullModeId, (float)UnityEngine.Rendering.CullMode.Off);
+            }
+
+            if (material.HasProperty(CullModeId)) {
+                material.SetFloat(CullModeId, (float)UnityEngine.Rendering.CullMode.Off);
+            }
+
+            if (material.HasProperty(RenderFaceId)) {
+                material.SetFloat(RenderFaceId, 0f);
+            }
         }
 
         /// <summary>

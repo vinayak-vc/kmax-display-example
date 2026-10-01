@@ -1,10 +1,11 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using KmaxXR;
 using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 
 namespace ViitorCloud.KmaxDisplayExample.Editor {
@@ -24,20 +25,40 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         private const string MenuPath = "Kmax/Volvo Exhibit/Set Up Volvo Exhibit";
         private const string ModuleRoot = "Assets/Games/kmax-display-example";
         private const string VolvoRoot = ModuleRoot + "/Model/VOLVO";
-        private const string ScenePath = VolvoRoot + "/VolvoS90.unity";
+        // The scene lives under Scenes/ with the other two; only the model, its split halves, its
+        // materials and its textures are under Model/VOLVO.
+        private const string ScenePath = ModuleRoot + "/Scenes/VolvoS90.unity";
         private const string ModelPath = VolvoRoot + "/Volvo S90.fbx";
         private const string SplitFolder = VolvoRoot + "/Split";
         private const string XrRigPrefabPath = ModuleRoot + "/Plugins/Kmax/com.kmax.xr.core/Editor Resources/XRRig.prefab";
+
+        private const string MaterialRoot = VolvoRoot + "/mat";
+        private const string InteriorTextureRoot = VolvoRoot + "/textures/Interior";
+        private const string MusicPath = ModuleRoot + "/Music/Dark-Times.mp3";
+        private const string EngineStartPath = VolvoRoot + "/Music/VOLVO-S90-Start.wav";
+        private const string EngineLoopPath = VolvoRoot + "/Music/VOLVO-S90-Loop.wav";
+        private const string CatalogPath = ModuleRoot + "/Data/VolvoCatalog.asset";
+        private const string TourPosePath = ModuleRoot + "/Data/VolvoTourPoses.asset";
 
         private const string ExhibitName = "VolvoExhibit";
         private const string PivotName = "VolvoModelPivot";
         private const string CarName = "Volvo S90";
         private const string PanelsName = "Panels";
+        private const string InteriorName = "Interior";
+        private const string PaintFeatureName = "Paint";
+        private const string TrimFeatureName = "Interior Trim";
         private const string FocusAnchorName = "FocusAnchor";
         private const string RigName = "XRRig";
         private const string UiName = "UI";
         private const string AmbienceName = "Ambience";
         private const string EventSystemName = "EventSystem";
+        private const string ShowroomName = "Showroom";
+
+        /// <summary>
+        /// Radius of the showroom floor in metres. See <c>BuildShowroom</c> for why it is this
+        /// small rather than the metre a real showroom would suggest.
+        /// </summary>
+        private const float FloorRadius = 0.45f;
 
         /// <summary>
         /// Longest edge of the car once it is in the exhibit, in metres.
@@ -47,6 +68,24 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// which swing the widest silhouette the exhibit ever has to frame.
         /// </summary>
         private const float TargetLength = 0.26f;
+
+        /// <summary>
+        /// Yaw put on the pivot so the car rests three-quarter on to the viewer, in degrees.
+        ///
+        /// <see cref="TargetLength"/> is chosen for a car seen broadside, but the model's own
+        /// length runs down +Z and the rig's resting view looks straight along +Z - so without this
+        /// the exhibit opened on the car's back end, 0.105 m across a screen 0.345 m wide. At 45
+        /// degrees the silhouette measures 0.26 x |sin| + 0.105 x |cos| = 0.258 m, which is the
+        /// three quarters of the screen that figure was picked for, and it is the angle a car is
+        /// photographed from for the same reason: one flank, one end, and the length reads.
+        ///
+        /// Applied to the pivot rather than to the car, and last, after every step that measures
+        /// the car in world space - the headlight beams and the exhaust audio are placed from
+        /// <c>carBounds.max.z</c> and would land on a flank if the car had already turned.
+        /// <see cref="EyeManipulator"/> captures the pivot's rotation as its rest pose, so Reset
+        /// View comes back here rather than to zero.
+        /// </summary>
+        private const float RestingYaw = 225f;
 
         /// <summary>
         /// A panel that exists on both sides of the car as a single mesh, and therefore has to be
@@ -159,8 +198,14 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
 
             SplitAllPanels(model);
             List<VehiclePanelGroup> groups = BuildPanels(car, model);
+            BuildInterior(car);
             NormaliseCar(car);
             ConfigureGlass();
+            ConfigurePaint();
+            ConfigureLamps();
+
+            EyeAnatomyCatalog catalog = BuildCatalog();
+            EyeExplodePoseSet tourPoses = BuildTourPoses();
 
             Transform focusAnchor = EyeAnatomySceneUpgrader.FindOrCreateChild(exhibit.transform, FocusAnchorName).transform;
             focusAnchor.localPosition = Vector3.zero;
@@ -169,25 +214,39 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             EyeAnatomySceneUpgrader.UpgradeEnvironment();
             EyeAnatomySceneUpgrader.UpgradePostProcessing(rig, exhibit);
             BuildLighting();
+            BuildReflections();
+            BuildShowroom(car);
 
             EyeAnatomySceneUpgrader.UpgradeEventSystem(eventSystem);
             EyeAnatomySceneUpgrader.UpgradeCamera(camera);
+            EyeAnatomySceneUpgrader.UpgradeHotspotPrefab();
             EyeAnatomySceneUpgrader.RemoveDuplicatePens(rig);
+            EyeAnatomySceneUpgrader.UpgradeMaterialsDoubleSided();
             KmaxStylus stylus = EyeAnatomySceneUpgrader.BuildStylus(rig, camera);
+            AnatomyAudioDirector audio = EyeAnatomySceneUpgrader.BuildAudio();
+            ConfigureMusic(audio);
             AnatomyParticleDirector particles = EyeAnatomySceneUpgrader.UpgradeParticles(ambience);
+            RetireAmbientMotes(ambience);
 
             VehicleLightRig lightRig = BuildLightRig(exhibit, car);
             VehicleIgnition ignition = BuildIgnition(exhibit, car, lightRig);
+            ConfigureEngineAudio(ignition);
             VolvoUi volvoUi = BuildUi(ui, camera, groups);
 
-            WireExhibit(exhibit, pivot, car, focusAnchor, rig, camera, groups, stylus, particles, ui);
+            // Last of the model steps: every measurement above is taken in world space, and the
+            // car has to still be pointing down +Z when they are.
+            FaceTheViewer(pivot);
+
+            WireExhibit(exhibit, pivot, car, focusAnchor, rig, camera, groups, catalog, tourPoses,
+                stylus, audio, particles, volvoUi);
             WireControls(exhibit, groups, lightRig, ignition, volvoUi);
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
             AssetDatabase.SaveAssets();
 
-            Debug.Log($"{nameof(VolvoExhibitBuilder)} finished: {groups.Count} panel group(s) hinged.");
+            Debug.Log($"{nameof(VolvoExhibitBuilder)} finished: {groups.Count} panel group(s) hinged, " +
+                $"{catalog.Parts.Length} tour stop(s) catalogued.");
         }
 
         private static bool EnsureSceneOpen() {
@@ -264,7 +323,10 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// </summary>
         private static SoloPanel[] GetSoloPanels() {
             return new SoloPanel[] {
-                new SoloPanel("SunRoof", "Sunroof Hinge", Vector3.right, 14f, true,
+                // 32 degrees, not the 14 a real sunroof vents at. It does tilt at 14 - measured,
+                // the rear edge lifts 6 mm - but the panel is transparent glass on a car 74 mm
+                // tall, and a movement that small through a clear pane reads as nothing happening.
+                new SoloPanel("SunRoof", "Sunroof Hinge", Vector3.right, 32f, true,
                     "Sunroof", "Tilt the sunroof", "Close the sunroof")
             };
         }
@@ -298,7 +360,26 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         private static Transform EnsureCar(Transform pivot, GameObject model) {
             Transform existing = pivot.Find(CarName);
             if (existing != null) {
-                return existing;
+                bool hasCorruptMaterials = false;
+                Renderer[] existingRenderers = existing.GetComponentsInChildren<Renderer>(true);
+                for (int i = 0; i < existingRenderers.Length; i++) {
+                    Material[] shared = existingRenderers[i].sharedMaterials;
+                    for (int j = 0; j < shared.Length; j++) {
+                        if (shared[j] != null && shared[j].name.Contains("Ghost")) {
+                            hasCorruptMaterials = true;
+                            break;
+                        }
+                    }
+                    if (hasCorruptMaterials) {
+                        break;
+                    }
+                }
+
+                if (!hasCorruptMaterials) {
+                    return existing;
+                }
+
+                Undo.DestroyObjectImmediate(existing.gameObject);
             }
 
             GameObject car = (GameObject)PrefabUtility.InstantiatePrefab(model);
@@ -670,7 +751,16 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         private static VehiclePanel BuildSoloPanel(Transform car, Transform panelsRoot, SoloPanel spec) {
             Transform existingPivot = panelsRoot.Find(spec.PivotName);
             if (existingPivot != null) {
-                return existingPivot.GetComponent<VehiclePanel>();
+                // Re-applied rather than returned untouched. This step used to hand back whatever
+                // was already in the scene, which is the same mistake BuildDoor was fixed for: a
+                // build step has to converge on the spec from wherever the scene is, not only from
+                // empty. Changing the sunroof's angle in the table did nothing at all until this
+                // was corrected, silently, because the hinge already existed.
+                VehiclePanel existing = existingPivot.GetComponent<VehiclePanel>();
+                if (existing != null) {
+                    ApplyPanelSpec(existing, spec);
+                    return existing;
+                }
             }
 
             Transform part = car.Find(spec.SourceName);
@@ -694,13 +784,131 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
 
             // The sunroof's frame stays with the roof; only the glass tilts.
             VehiclePanel panel = Undo.AddComponent<VehiclePanel>(pivotObject);
+            ApplyPanelSpec(panel, spec);
+            panel.CaptureClosedRotation();
+            return panel;
+        }
+
+        private static void ApplyPanelSpec(VehiclePanel panel, SoloPanel spec) {
             SerializedObject so = new SerializedObject(panel);
             so.FindProperty("hingeAxis").vector3Value = spec.Axis;
             so.FindProperty("openAngle").floatValue = spec.Angle;
             so.FindProperty("duration").floatValue = 1.2f;
             so.ApplyModifiedPropertiesWithoutUndo();
-            panel.CaptureClosedRotation();
-            return panel;
+            EditorUtility.SetDirty(panel);
+        }
+
+        /// <summary>
+        /// Every mesh that makes up the cabin, in the modeller's own names.
+        ///
+        /// Derived from the materials rather than guessed: the interior is exactly the geometry
+        /// wearing <c>Shell</c>, <c>Dashboard</c>, <c>CenterConsole</c>, <c>Front Seat</c>,
+        /// <c>Rear Seats</c> and <c>Steeringwheel</c>, plus the five pieces the modeller gave their
+        /// own materials - the two screens, the crystal gear knob, its surround and the pedals.
+        ///
+        /// The door cards are **not** here. They wear the interior's <c>DoorPanel</c> materials and
+        /// the trim swatches repaint them with the rest, but they are hinged to their doors and
+        /// have to swing with them, so the cabin focus ghosts them along with the bodywork. That
+        /// reads correctly: with the doors shut, a ghosted door is a door you can see through.
+        /// </summary>
+        private static string[] GetInteriorMeshes() {
+            return new string[] {
+                "Shell", "Floor", "Driver Carpet", "PassengerCarpet", "Rear Carpet", "PlasticTrim",
+                "RearShelf", "CeilingConsole", "RearviewMirror", "RearviewMirrorHolder",
+                "SeatBelts Front", "SeatBelts Rear",
+                "Dashboard", "Glovebox Handle", "Knobs", "Vents",
+                "CenterConsole", "Plane.049", "Shifterknob", "Shifterknob Crystal",
+                "Driver Seat", "Passenger Seat", "Rear Seats",
+                "SteeringWheel", "SteeringWheel Emblem", "SteeringColumn", "Stalks",
+                "SpeedoScreen", "SpeedoGlass", "InfoTainment Screen", "Gas/Brake Pedal"
+            };
+        }
+
+        /// <summary>
+        /// Gathers the cabin under one node, so the exhibit has something to frame.
+        ///
+        /// This is the whole of the interior view. <see cref="EyeFocusView"/> already scales a part
+        /// up to fill the screen and ghosts everything that is not underneath it, so a node holding
+        /// the cabin gives a focus that brings the interior forward and turns the shell, the roof
+        /// and the glass translucent around it - with no new mechanism, and no camera inside the
+        /// car, which the rig cannot do anyway: at exhibit scale the cabin is 0.08 m across and
+        /// <see cref="ViewerFlyController"/> will not come closer than 0.14 m.
+        ///
+        /// Nothing moves. The group is created at the car's own origin and every mesh keeps its
+        /// world pose.
+        /// </summary>
+        private static Transform BuildInterior(Transform car) {
+            Transform interior = EyeAnatomySceneUpgrader.FindOrCreateChild(car, InteriorName).transform;
+            interior.localPosition = Vector3.zero;
+            interior.localRotation = Quaternion.identity;
+            interior.localScale = Vector3.one;
+
+            string[] meshes = GetInteriorMeshes();
+            int moved = 0;
+
+            for (int i = 0; i < meshes.Length; i++) {
+                Transform mesh = FindCarMesh(car, interior, meshes[i]);
+                if (mesh == null) {
+                    Debug.LogError($"{nameof(VolvoExhibitBuilder)} could not find the cabin mesh " +
+                        $"'{meshes[i]}'; the interior view will be short of it.");
+                    continue;
+                }
+
+                if (mesh.parent == interior) {
+                    continue;
+                }
+
+                mesh.SetParent(interior, true);
+                moved++;
+            }
+
+            if (moved > 0) {
+                Debug.Log($"{nameof(VolvoExhibitBuilder)} gathered {moved} cabin mesh(es) under " +
+                    $"'{InteriorName}'.");
+            }
+
+            return interior;
+        }
+
+        /// <summary>
+        /// A named mesh of the car, wherever the build has already put it.
+        ///
+        /// Matched on the trimmed name, because the modeller left a trailing space on several of
+        /// them - "CeilingConsole ", "Stalks ", "SteeringColumn " - and looked for under the
+        /// interior group as well as the car, so that a second run finds what the first one moved.
+        /// A plain <c>Transform.Find</c> will not do either job: it is exact, and it reads a slash
+        /// as a path separator, which "Gas/Brake Pedal" is not.
+        /// </summary>
+        private static Transform FindCarMesh(Transform car, Transform interior, string meshName) {
+            Transform found = FindChildByName(car, meshName);
+            if (found != null) {
+                return found;
+            }
+
+            return FindChildByName(interior, meshName);
+        }
+
+        private static Transform FindChildByName(Transform parent, string meshName) {
+            if (parent == null) {
+                return null;
+            }
+
+            string wanted = meshName.Trim();
+            for (int i = 0; i < parent.childCount; i++) {
+                if (parent.GetChild(i).name.Trim() == wanted) {
+                    return parent.GetChild(i);
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Turns the finished car to face the viewer. See <see cref="RestingYaw"/>.
+        /// </summary>
+        private static void FaceTheViewer(Transform pivot) {
+            pivot.localRotation = Quaternion.Euler(0f, RestingYaw, 0f);
+            EditorUtility.SetDirty(pivot);
         }
 
         /// <summary>
@@ -750,6 +958,110 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         }
 
         /// <summary>
+        /// One stop on the guided tour: what to frame, what to call it and what to say about it.
+        /// </summary>
+        private class TourStop {
+            public string Path;
+            public string DisplayName;
+            public string Description;
+            public bool ShowsInterior;
+
+            public TourStop(string path, string displayName, string description)
+                : this(path, displayName, description, false) {
+            }
+
+            public TourStop(string path, string displayName, string description, bool showsInterior) {
+                Path = path;
+                DisplayName = displayName;
+                Description = description;
+                ShowsInterior = showsInterior;
+            }
+        }
+
+        /// <summary>
+        /// The tour, in the order Next steps through it.
+        ///
+        /// Chosen to go round the car rather than to be a list of the eight best features: the
+        /// navigator flies the camera to each stop's own side and the badges are pushed out to the
+        /// car's silhouette, so two stops on the same corner would put two badges on top of each
+        /// other and fly the viewer nowhere between them. What is here reaches the nose, the tail,
+        /// both ends of the left flank, the roof, underneath, and twice inside.
+        /// </summary>
+        private static TourStop[] GetTour() {
+            return new TourStop[] {
+                new TourStop(InteriorName, "Cabin",
+                    "Leather over a driver-focused dashboard, with a portrait touchscreen in the " +
+                    "centre console and a digital instrument display behind the wheel. The gear " +
+                    "selector is topped with Orrefors crystal. Try the interior swatches on the right.", true),
+                new TourStop("Glass Headlight", "Headlights",
+                    "Full-LED headlamps behind a single moulded lens, with the T-shaped daytime " +
+                    "running lights - Thor's Hammer - that mark out the front of every modern Volvo. " +
+                    "Each reflector, emitter and lens is its own mesh, which is why they can be lit " +
+                    "one channel at a time."),
+                new TourStop("Frame Taillight", "Tail lights",
+                    "The C-shaped rear lamp signature, split between the body and the boot lid so " +
+                    "it stays unbroken when the car is shut. Six separate diffusers and reflectors " +
+                    "make up each side."),
+                new TourStop("Rim FL", "Alloy wheels",
+                    "Multi-spoke alloys over vented discs and fixed calipers. The tyre, rim, hub, " +
+                    "disc and caliper are modelled as five parts, so the wheel reads as an assembly " +
+                    "rather than a decal."),
+                new TourStop("Panels/Door Front Left/Door Front Left Mirror", "Door mirrors",
+                    "The wing mirrors carry their own indicator repeaters, which flash with the " +
+                    "car's. They are hinged to the door, so they swing out with it."),
+                new TourStop("Panels/Sunroof Hinge/SunRoof", "Panoramic roof",
+                    "A single pane of glass over both rows, which tilts at the rear. Every glazed " +
+                    "surface on this model arrived opaque and is made transparent by the exhibit - " +
+                    "without that there was no interior to see at all."),
+                new TourStop("Exhaust System", "Tailpipes",
+                    "Twin trapezoidal tailpipes under the rear valance. The idle is synthesised and " +
+                    "played from here, so the exhaust note stays behind the car as the view orbits."),
+                new TourStop(InteriorName + "/Driver Seat", "Front seats",
+                    "Contoured seats with integrated belts and adjustable bolsters. They take their " +
+                    "colour from the interior swatches along with the dashboard, console and door cards.", true)
+            };
+        }
+
+        private static EyeAnatomyCatalog BuildCatalog() {
+            EyeAnatomyCatalog catalog = EyeAnatomyAssetFactory.LoadOrCreate<EyeAnatomyCatalog>(CatalogPath);
+            TourStop[] stops = GetTour();
+            EyePartDefinition[] parts = new EyePartDefinition[stops.Length];
+
+            for (int i = 0; i < stops.Length; i++) {
+                // Everything except the two interior stops keeps the bodywork solid. See the
+                // EyePartDefinition field for why it is stored the negative way round.
+                parts[i] = new EyePartDefinition(stops[i].DisplayName, stops[i].Description, stops[i].Path,
+                    !stops[i].ShowsInterior);
+            }
+
+            catalog.SetParts(parts);
+            EditorUtility.SetDirty(catalog);
+            return catalog;
+        }
+
+        /// <summary>
+        /// An explode pose set with nothing in it, which is what this exhibit's "open" state is.
+        ///
+        /// <see cref="EyeAnatomyController"/> gates the badges and the navigator on
+        /// <see cref="EyeExplodeView.IsExpanded"/>, so on a model that comes apart the two states
+        /// are the same thing: the eye is open, therefore its parts are labelled. The car does not
+        /// come apart - the hood and boot were withdrawn because there is no engine bay or boot
+        /// floor behind them - but it wants the same two states, a car to look at and a car with
+        /// its tour running.
+        ///
+        /// An empty pose set gives exactly that and costs nothing: <c>ResolveParts</c> finds no
+        /// parts and reports none missing, and <c>SetExpanded</c> still runs its timer and raises
+        /// <c>TransitionCompleted</c>, which is what brings the badges up. Nothing moves. The asset
+        /// exists rather than being left null only because the view logs an error without one.
+        /// </summary>
+        private static EyeExplodePoseSet BuildTourPoses() {
+            EyeExplodePoseSet poses = EyeAnatomyAssetFactory.LoadOrCreate<EyeExplodePoseSet>(TourPosePath);
+            poses.SetPoses(new EyePartPose[0]);
+            EditorUtility.SetDirty(poses);
+            return poses;
+        }
+
+        /// <summary>
         /// Car paint is a clear-coated specular surface, so it is read almost entirely from what it
         /// reflects. The key is held lower than the engine's and the rim raised, because the shape
         /// of a car body is described by the highlight running along it rather than by diffuse
@@ -757,26 +1069,397 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// </summary>
         private static void BuildLighting() {
             Light key = EyeAnatomySceneUpgrader.EnsureLight("Key Light", LightType.Directional);
-            key.transform.SetPositionAndRotation(new Vector3(0.3f, 0.5f, -0.4f), Quaternion.Euler(48f, 145f, 0f));
+            // Aimed across the car's resting three-quarter rather than down the world axes, so the
+            // key rakes along the flank the viewer is looking at instead of straight into it.
+            // 34 degrees rather than 42: a lower sun stretches the window panes across the floor
+            // instead of stamping them, which is what the reference shot does with them.
+            key.transform.SetPositionAndRotation(new Vector3(0.3f, 0.5f, -0.4f), Quaternion.Euler(34f, 200f, 0f));
             key.color = new Color(1f, 0.98f, 0.94f);
-            key.intensity = 1.1f;
+            // Down from 1.6. The floor is a pale surface now, and a full-strength pane on it was
+            // clipping to white - the cookie's own contrast is doing the work the intensity was.
+            key.intensity = 1.15f;
             key.shadows = LightShadows.Soft;
-            key.shadowStrength = 0.7f;
+            key.shadowStrength = 0.8f;
             key.enabled = true;
 
+            // The window gobo. A directional cookie tiles across the world at cookieSize2D, so this
+            // is the size of one window in metres - a little under half the car's length, which
+            // puts three or four panes across the floor rather than one wash or a fine grid.
+            Texture2D cookie = EyeAnatomyAssetFactory.GetOrCreateKeyCookie();
+            if (cookie != null) {
+                key.cookie = cookie;
+                // 0.24 m per window, against a floor 0.9 m across: three or four panes to a side
+                // rather than one. At 0.42 the whole floor was inside a single pane.
+                key.cookieSize2D = new Vector2(0.15f, 0.15f);
+            }
+
             Light fill = EyeAnatomySceneUpgrader.EnsureLight("Fill Light", LightType.Directional);
-            fill.transform.SetPositionAndRotation(new Vector3(-0.4f, 0.3f, -0.35f), Quaternion.Euler(18f, 232f, 0f));
-            fill.color = new Color(0.80f, 0.87f, 1f);
-            fill.intensity = 0.62f;
+            fill.transform.SetPositionAndRotation(new Vector3(-0.4f, 0.3f, -0.35f), Quaternion.Euler(16f, 300f, 0f));
+            fill.color = new Color(0.78f, 0.86f, 1f);
+            fill.intensity = 0.5f;
             fill.shadows = LightShadows.None;
             fill.enabled = true;
 
+            // Behind and above, opposite the key. On a dark car against a dark background this is
+            // the only thing separating the roof and boot lid from the backdrop.
             Light rim = EyeAnatomySceneUpgrader.EnsureLight("Rim Light", LightType.Directional);
-            rim.transform.SetPositionAndRotation(new Vector3(0f, 0.45f, 0.5f), Quaternion.Euler(22f, 350f, 0f));
-            rim.color = new Color(0.78f, 0.86f, 1f);
-            rim.intensity = 0.72f;
+            rim.transform.SetPositionAndRotation(new Vector3(0f, 0.45f, 0.5f), Quaternion.Euler(18f, 40f, 0f));
+            rim.color = new Color(0.80f, 0.88f, 1f);
+            rim.intensity = 0.95f;
             rim.shadows = LightShadows.None;
             rim.enabled = true;
+        }
+
+        /// <summary>
+        /// Switches off the drifting mote layers, keeping the ones that fire on an interaction.
+        ///
+        /// The motes exist to give a model floating in a void some depth to be read against - near,
+        /// far and foreground layers parallaxing as the view orbits. That is the eye's problem, not
+        /// this one: the showroom floor gives the car a ground plane, a cast shadow and a horizon,
+        /// which is a far better depth cue than dust.
+        ///
+        /// Over a dark backdrop they were invisible until you looked for them. Over a lit floor they
+        /// are white specks two or three pixels across scattered on it, which reads as noise in the
+        /// render rather than as atmosphere.
+        ///
+        /// The burst, ring and spark systems stay. Those are feedback on a press and only exist for
+        /// the moment they play.
+        /// </summary>
+        private static void RetireAmbientMotes(GameObject ambience) {
+            string[] fields = new string[] { "MoteField", "MoteField_Near", "MoteField_Far", "MoteField_Foreground" };
+            int retired = 0;
+
+            for (int i = 0; i < fields.Length; i++) {
+                Transform field = ambience.transform.Find(fields[i]);
+                if (field == null || !field.gameObject.activeSelf) {
+                    continue;
+                }
+
+                field.gameObject.SetActive(false);
+                EditorUtility.SetDirty(field.gameObject);
+                retired++;
+            }
+
+            if (retired > 0) {
+                Debug.Log($"{nameof(VolvoExhibitBuilder)} switched off {retired} drifting mote layer(s); " +
+                    "the showroom floor is the depth cue now.");
+            }
+        }
+
+        /// <summary>
+        /// Colours the lamp lenses.
+        ///
+        /// The model's tail lamp glass is not red. Every diffuser and lens on the back of this car
+        /// ships white or grey with no texture - `Translucent_Glass` and its .001 sibling are pure
+        /// white at 55% alpha - and the red came entirely from the emission the light rig adds.
+        /// That worked while the exhibit was a car floating against black. Over a lit showroom floor
+        /// the lenses pick up far more light than the emission adds, and the lamp renders pale
+        /// yellow-white with a red smear in it.
+        ///
+        /// So the glass is tinted, which is what makes it a *red lamp* whether it is lit or not - a
+        /// tail light is red in daylight too. Only the alpha that <see cref="ConfigureGlass"/> set
+        /// is preserved; the colour is this step's.
+        ///
+        /// Runs after <see cref="ConfigureGlass"/>, which converts these same materials to
+        /// transparent and would otherwise be working from an untinted copy.
+        /// </summary>
+        private static void ConfigureLamps() {
+            // The main lenses and both diffusers: deep red, the colour of the glass itself.
+            TintLens("Glass Taillight", new Color(0.46f, 0.030f, 0.018f));
+            TintLens("Translucent_Glass", new Color(0.50f, 0.035f, 0.020f));
+            TintLens("Translucent_Glass.001", new Color(0.50f, 0.035f, 0.020f));
+            // The indicator section of the cluster, and the side repeater beside it.
+            TintLens("Turn signal(taillight)", new Color(0.62f, 0.22f, 0.020f));
+            AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>
+        /// Sets a lens material's colour while leaving whatever alpha it already carries.
+        /// </summary>
+        private static void TintLens(string materialName, Color colour) {
+            Material material = FindMaterial(materialName);
+            if (material == null) {
+                Debug.LogWarning($"{nameof(VolvoExhibitBuilder)} could not find the '{materialName}' " +
+                    "lens material; that lamp keeps the colour it shipped with.");
+                return;
+            }
+
+            SetTint(material, "_BaseColor", colour);
+            SetTint(material, "_Color", colour);
+            EditorUtility.SetDirty(material);
+        }
+
+        private static void SetTint(Material material, string property, Color colour) {
+            if (!material.HasProperty(property)) {
+                return;
+            }
+
+            Color existing = material.GetColor(property);
+            material.SetColor(property, new Color(colour.r, colour.g, colour.b, existing.a));
+        }
+
+        /// <summary>
+        /// Puts the supplied recordings of the car under the ignition, in place of the synthesis.
+        ///
+        /// <see cref="VehicleIgnition"/> already sequences this - it plays the start clip once,
+        /// waits <c>catchDelay</c>, then brings the idle loop up under it - so all that is needed is
+        /// the two clips and a delay that suits them. The delay was 0.85 s, tuned against a 2.2 s
+        /// synthesised starter; the real recording runs 5.5 s, and left alone the idle would have
+        /// risen while the engine was still cranking.
+        ///
+        /// It is derived from the clip rather than typed in, so replacing the recording with a
+        /// longer or shorter one needs no second edit. The idle comes up over the last second, which
+        /// is where a real start settles into one.
+        ///
+        /// Import settings differ by role: the starter is short and has to sound the instant the
+        /// button is pressed, so it is decompressed on load; the idle loop is longer and only has to
+        /// be seamless, so it stays compressed in memory.
+        /// </summary>
+        private static void ConfigureEngineAudio(VehicleIgnition ignition) {
+            if (ignition == null) {
+                return;
+            }
+
+            AudioClip start = AssetDatabase.LoadAssetAtPath<AudioClip>(EngineStartPath);
+            AudioClip loop = AssetDatabase.LoadAssetAtPath<AudioClip>(EngineLoopPath);
+
+            if (start == null || loop == null) {
+                Debug.LogWarning($"{nameof(VolvoExhibitBuilder)} could not load the engine recordings " +
+                    $"from '{EngineStartPath}' and '{EngineLoopPath}'; the ignition keeps its " +
+                    "synthesised start and idle.");
+                return;
+            }
+
+            SetAudioImport(EngineStartPath, AudioClipLoadType.DecompressOnLoad);
+            SetAudioImport(EngineLoopPath, AudioClipLoadType.CompressedInMemory);
+
+            SerializedObject so = new SerializedObject(ignition);
+            EyeAnatomySceneUpgrader.SetIfPresent(so, "startOverride", start);
+            EyeAnatomySceneUpgrader.SetIfPresent(so, "idleOverride", loop);
+            SetFloat(so, "catchDelay", Mathf.Max(0.2f, start.length - 1f));
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void SetAudioImport(string path, AudioClipLoadType loadType) {
+            AudioImporter importer = AssetImporter.GetAtPath(path) as AudioImporter;
+            if (importer == null) {
+                return;
+            }
+
+            // The starter has to sound the instant the button is pressed, so it is preloaded;
+            // the idle loop only has to be seamless and can wait.
+            bool preload = loadType == AudioClipLoadType.DecompressOnLoad;
+
+            AudioImporterSampleSettings settings = importer.defaultSampleSettings;
+            if (settings.loadType == loadType && settings.preloadAudioData == preload) {
+                return;
+            }
+
+            // Both fields are compared, not just the load type. Checking one and setting two
+            // means the second never converges: the load type matched on the second run, the
+            // step returned, and the preload flag it had never managed to write stayed wrong.
+            settings.loadType = loadType;
+            settings.preloadAudioData = preload;
+            importer.defaultSampleSettings = settings;
+            importer.SaveAndReimport();
+        }
+
+        /// <summary>
+        /// Puts a real track under the exhibit in place of the synthesised pad.
+        ///
+        /// <see cref="AnatomyAudioDirector"/> already has the hook for this - <c>musicOverride</c>
+        /// bypasses the synthesis entirely - so this is one reference plus the import settings the
+        /// clip needs to be sensible about memory.
+        ///
+        /// Streamed rather than decompressed into memory: this is a three-megabyte MP3 that plays
+        /// for the whole session, and the default would unpack the entire thing as PCM at load.
+        /// Preloading is off for the same reason, and the ducking the director already does keeps
+        /// it under the interaction cues and the engine rather than over them.
+        /// </summary>
+        private static void ConfigureMusic(AnatomyAudioDirector audio) {
+            if (audio == null) {
+                return;
+            }
+
+            AudioClip track = EyeAnatomyAssetFactory.GetOrCreateSoothingMusic();
+            if (track == null) {
+                return;
+            }
+
+            SerializedObject so = new SerializedObject(audio);
+            EyeAnatomySceneUpgrader.SetIfPresent(so, "musicOverride", track);
+            SetFloat(so, "musicVolume", 0.28f);
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>
+        /// Turns the body panels into clear-coated car paint.
+        ///
+        /// The model ships <c>Car Paint</c> as a plain dielectric at 0.69 smoothness, which is a
+        /// satin plastic. Real car paint is two surfaces: a coloured base, and a thin transparent
+        /// lacquer over it that is very nearly a mirror. URP Lit models exactly that with its clear
+        /// coat, and it is the difference between a body that shades and a body that *reflects* -
+        /// the streak that runs the length of a wing is the lacquer mirroring the studio, not the
+        /// colour underneath catching a highlight.
+        ///
+        /// The shader has to change for it. <c>Universal Render Pipeline/Lit</c> has **no clear
+        /// coat** - the properties are on the material because they are part of the shared URP
+        /// property block, but the shader declares no <c>_CLEARCOAT</c> keyword and ignores them,
+        /// which is exactly what setting them alone looked like: mask 1, smoothness 0.96, and no
+        /// change whatsoever. Clear coat lives in <c>Complex Lit</c>. Property names are shared, so
+        /// the swap carries the colour across and the swatches keep working unchanged.
+        ///
+        /// Complex Lit is the heavier shader and forward-only. It is put on the seventeen body
+        /// renderers and nothing else.
+        ///
+        /// The chrome and the glossy black trim are lifted too, on the ordinary Lit - they are the
+        /// parts that catch the window bands along the shoulder line.
+        /// </summary>
+        private static void ConfigurePaint() {
+            Material paint = FindMaterial("Car Paint");
+            if (paint == null) {
+                Debug.LogWarning($"{nameof(VolvoExhibitBuilder)} could not find 'Car Paint'; the body " +
+                    "will keep the satin finish it shipped with.");
+            } else {
+                Shader complex = Shader.Find("Universal Render Pipeline/Complex Lit");
+                if (complex == null) {
+                    Debug.LogWarning($"{nameof(VolvoExhibitBuilder)} could not find the Complex Lit " +
+                        "shader; the paint gets a high smoothness instead of a clear coat.");
+                    paint.SetFloat("_Smoothness", 0.92f);
+                } else {
+                    paint.shader = complex;
+                    paint.SetFloat("_Smoothness", 0.82f);
+                    // _ClearCoat is the feature toggle and _ClearCoatMask is its strength. They are
+                    // two different properties and both are needed: URP re-validates the material
+                    // on import and rebuilds the keyword from the *toggle*, so setting the mask and
+                    // the keyword while the toggle stayed 0 got the keyword switched straight back
+                    // off again with nothing logged.
+                    paint.SetFloat("_ClearCoat", 1f);
+                    paint.SetFloat("_ClearCoatMask", 1f);
+                    paint.SetFloat("_ClearCoatSmoothness", 0.96f);
+                    EnableLocalKeyword(paint, "_CLEARCOAT");
+                }
+
+                EditorUtility.SetDirty(paint);
+            }
+
+            SetGloss("Chrome", 0.93f, 1f);
+            SetGloss("chrome.001", 0.93f, 1f);
+            SetGloss("Black Glossy", 0.88f, 0f);
+            SetGloss("Rims.001", 0.78f, 0.9f);
+            AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>
+        /// Switches a shader feature on properly.
+        ///
+        /// <c>Material.EnableKeyword(string)</c> does **not** do this for every keyword, which is
+        /// worth knowing because it fails in total silence. Complex Lit declares <c>_CLEARCOAT</c>
+        /// as a local keyword that is not overridable, and the string overload will not touch one
+        /// of those: it writes the name into the material's keyword list, where it serialises and
+        /// reads back convincingly, while <c>IsKeywordEnabled</c> stays false and the shader
+        /// renders without the feature. The typed <see cref="LocalKeyword"/> overload is the one
+        /// that works, and checking the result afterwards is the only way to know which you got.
+        /// </summary>
+        private static void EnableLocalKeyword(Material material, string keywordName) {
+            LocalKeyword keyword = new LocalKeyword(material.shader, keywordName);
+            if (!keyword.isValid) {
+                Debug.LogWarning($"{nameof(VolvoExhibitBuilder)} found no '{keywordName}' keyword on " +
+                    $"'{material.shader.name}'; '{material.name}' will render without that feature.");
+                return;
+            }
+
+            material.SetKeyword(keyword, true);
+
+            if (!material.IsKeywordEnabled(keywordName)) {
+                Debug.LogWarning($"{nameof(VolvoExhibitBuilder)} could not enable '{keywordName}' on " +
+                    $"'{material.name}'.");
+            }
+        }
+
+        private static void SetGloss(string materialName, float smoothness, float metallic) {
+            Material material = FindMaterial(materialName);
+            if (material == null) {
+                return;
+            }
+
+            material.SetFloat("_Smoothness", smoothness);
+            material.SetFloat("_Metallic", metallic);
+            EditorUtility.SetDirty(material);
+        }
+
+        /// <summary>
+        /// Puts the car in a showroom: a disc of floor under it, dark and smooth enough to draw the
+        /// studio's softboxes into streaks, fading to the backdrop's own colour at its rim.
+        ///
+        /// What it is really there for is the **shadow**. The key light has cast soft shadows all
+        /// along, onto nothing - there was no surface below the car to receive one - and a car
+        /// floating with no contact under it is the single thing that most says "3D model" rather
+        /// than "car". <see cref="EyeAnatomySceneUpgrader.UpgradeRenderQuality"/> is what makes that
+        /// shadow legible at this scale.
+        ///
+        /// Kept to 0.45 m radius, not the metre a real showroom would suggest. This is a stereo
+        /// display: geometry in front of the screen plane that runs off the edge of the frame is
+        /// the classic window violation, and a floor is the easiest way to create one. At this size
+        /// the gradient has reached the backdrop before it reaches the frame.
+        ///
+        /// Its own root, not a child of the pivot: the floor must not turn with the car, and must
+        /// not be scaled by the focus view when a part is framed.
+        /// </summary>
+        private static void BuildShowroom(Transform car) {
+            Mesh mesh = EyeAnatomyAssetFactory.GetOrCreateFloorMesh();
+            Material material = EyeAnatomyAssetFactory.GetOrCreateFloorMaterial();
+            if (mesh == null || material == null) {
+                return;
+            }
+
+            GameObject showroom = FindOrCreateRoot(ShowroomName);
+            GameObject floor = EyeAnatomySceneUpgrader.FindOrCreateChild(showroom.transform, "Floor");
+
+            Bounds bounds;
+            if (!TryMeasure(car, out bounds)) {
+                return;
+            }
+
+            // A hair below the tyres, so the contact shadow lands tight under them rather than the
+            // floor z-fighting with the tread.
+            floor.transform.SetPositionAndRotation(
+                new Vector3(bounds.center.x, bounds.min.y - 0.0004f, bounds.center.z), Quaternion.identity);
+            floor.transform.localScale = new Vector3(FloorRadius, 1f, FloorRadius);
+
+            MeshFilter filter = EyeAnatomySceneUpgrader.GetOrAdd<MeshFilter>(floor);
+            filter.sharedMesh = mesh;
+
+            MeshRenderer renderer = EyeAnatomySceneUpgrader.GetOrAdd<MeshRenderer>(floor);
+            renderer.sharedMaterial = material;
+            // Receives, never casts: the floor is under everything, and a disc casting into itself
+            // only costs fill rate.
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = true;
+
+            EditorUtility.SetDirty(floor);
+        }
+
+        /// <summary>
+        /// Gives the bodywork a studio to reflect, without changing the backdrop it is seen against.
+        ///
+        /// The two are set separately on purpose. <c>UpgradeEnvironment</c> leaves the skybox as the
+        /// near-black gradient the whole exhibit is composed against, and this points reflections at
+        /// a cubemap with real structure in it instead. See
+        /// <see cref="EyeAnatomyAssetFactory.GetOrCreateStudioReflection"/> for why a car needs that
+        /// and the eye did not.
+        /// </summary>
+        private static void BuildReflections() {
+            Cubemap studio = EyeAnatomyAssetFactory.GetOrCreateStudioReflection();
+            if (studio == null) {
+                Debug.LogWarning($"{nameof(VolvoExhibitBuilder)} could not build the studio reflection; " +
+                    "the paint will reflect the backdrop instead.");
+                return;
+            }
+
+            RenderSettings.defaultReflectionMode = UnityEngine.Rendering.DefaultReflectionMode.Custom;
+            RenderSettings.customReflectionTexture = studio;
+            RenderSettings.reflectionIntensity = 1f;
         }
 
         private static GameObject FindOrCreateRoot(string name) {
@@ -828,8 +1511,9 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         }
 
         private static void WireExhibit(GameObject exhibit, Transform pivot, Transform car, Transform focusAnchor,
-            GameObject rig, Camera camera, List<VehiclePanelGroup> groups, KmaxStylus stylus,
-            AnatomyParticleDirector particles, GameObject ui) {
+            GameObject rig, Camera camera, List<VehiclePanelGroup> groups, EyeAnatomyCatalog catalog,
+            EyeExplodePoseSet tourPoses, KmaxStylus stylus, AnatomyAudioDirector audio,
+            AnatomyParticleDirector particles, VolvoUi ui) {
 
             EyeManipulator manipulator = EyeAnatomySceneUpgrader.GetOrAdd<EyeManipulator>(exhibit);
             SerializedObject manipulatorSo = new SerializedObject(manipulator);
@@ -840,6 +1524,10 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             ViewerFlyController fly = EyeAnatomySceneUpgrader.GetOrAdd<ViewerFlyController>(exhibit);
             SerializedObject flySo = new SerializedObject(fly);
             EyeAnatomySceneUpgrader.SetIfPresent(flySo, "rigRoot", rig.transform);
+            // Looking slightly down on the car, which is how a car is looked at and the only way
+            // the showroom floor is visible at all - a horizontal disc seen from dead level is a
+            // horizontal line. The eye and the engine leave this at zero.
+            SetFloat(flySo, "homePitch", 14f);
             flySo.ApplyModifiedPropertiesWithoutUndo();
 
             EyeFocusView focus = EyeAnatomySceneUpgrader.GetOrAdd<EyeFocusView>(exhibit);
@@ -851,6 +1539,13 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             EyeAnatomySceneUpgrader.SetIfPresent(focusSo, "flyController", fly);
             EyeAnatomySceneUpgrader.SetIfPresent(focusSo, "ghostMaterial",
                 AssetDatabase.LoadAssetAtPath<Material>(EyeAnatomySceneUpgrader.GhostMaterialPath));
+            EyeAnatomySceneUpgrader.SetIfPresent(focusSo, "focusHighlightMaterial",
+                EyeAnatomyAssetFactory.GetOrCreateFocusHighlightMaterial());
+            // Far wider than the eye's 0.48 or the engine's 0.56, because a car's features are a
+            // large fraction of the car. The cabin alone is 60% of the wheelbase, and at 0.52 it
+            // framed *smaller* than the resting view - the exhibit would have zoomed out to focus
+            // it. Small stops are unaffected: a door mirror hits maxZoomMultiplier either way.
+            SetFloat(focusSo, "framingRatio", 0.70f);
             focusSo.ApplyModifiedPropertiesWithoutUndo();
 
             ExhibitPostProcessing postFx = EyeAnatomySceneUpgrader.GetOrAdd<ExhibitPostProcessing>(exhibit);
@@ -862,12 +1557,135 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             panels.SetGroups(groups.ToArray());
             EditorUtility.SetDirty(panels);
 
+            VehicleFinishSwatches paint = BuildPaintSwatches(exhibit, car, focus);
+            VehicleFinishSwatches trim = BuildTrimSwatches(exhibit, car, focus);
+
+            EyeExplodeView explode = EyeAnatomySceneUpgrader.GetOrAdd<EyeExplodeView>(exhibit);
+            SerializedObject explodeSo = new SerializedObject(explode);
+            EyeAnatomySceneUpgrader.SetIfPresent(explodeSo, "modelRoot", car);
+            EyeAnatomySceneUpgrader.SetIfPresent(explodeSo, "poseSet", tourPoses);
+            // Nothing moves - see BuildTourPoses - so this is only the beat between asking for the
+            // tour and the badges arriving. Long enough to read as a response, short enough not to
+            // feel like waiting for something that is not happening.
+            SetFloat(explodeSo, "transitionDuration", 0.35f);
+            explodeSo.ApplyModifiedPropertiesWithoutUndo();
+
+            EyeAnatomyController controller = EyeAnatomySceneUpgrader.GetOrAdd<EyeAnatomyController>(exhibit);
+            SerializedObject controllerSo = new SerializedObject(controller);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "explodeView", explode);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "focusView", focus);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "catalog", catalog);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "infoPanel", ui.InfoPanel);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "modelRoot", car);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "hotspotPrefab",
+                AssetDatabase.LoadAssetAtPath<EyeHotspot>(EyeAnatomySceneUpgrader.HotspotPrefabPath));
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "manipulator", manipulator);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "flyController", fly);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "expandButton", ui.Tour);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "expandButtonLabel", ui.TourLabel);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "backButton", ui.Back);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "resetButton", ui.Reset);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "nextButton", ui.Next);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "previousButton", ui.Previous);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "partCounterLabel", ui.Counter);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "audioDirector", audio);
+            EyeAnatomySceneUpgrader.SetIfPresent(controllerSo, "particles", particles);
+            SetString(controllerSo, "expandLabel", "Start the tour");
+            SetString(controllerSo, "collapseLabel", "End the tour");
+            SetString(controllerSo, "partNoun", "features");
+            // The car is 0.26 m long but only 0.075 m tall, and the badges have to read against
+            // that shorter dimension, so they are the engine's size rather than scaled to length.
+            SetFloat(controllerSo, "hotspotWorldRadius", 0.008f);
+            SetFloat(controllerSo, "hotspotFrontGap", 0.012f);
+            // The car never comes apart, so a badge in front of its own part is a badge inside the
+            // bodywork. See EyeAnatomyController.HotspotPosition.
+            SetBool(controllerSo, "hotspotsOutsideModel", true);
+            controllerSo.ApplyModifiedPropertiesWithoutUndo();
+
+            ExhibitAttractMode attract = EyeAnatomySceneUpgrader.GetOrAdd<ExhibitAttractMode>(exhibit);
+            SerializedObject attractSo = new SerializedObject(attract);
+            EyeAnatomySceneUpgrader.SetIfPresent(attractSo, "exhibitController", controller);
+            EyeAnatomySceneUpgrader.SetIfPresent(attractSo, "flyController", fly);
+            EyeAnatomySceneUpgrader.SetIfPresent(attractSo, "explodeView", explode);
+            EyeAnatomySceneUpgrader.SetIfPresent(attractSo, "promptLabel", ui.AttractPrompt);
+            attractSo.ApplyModifiedPropertiesWithoutUndo();
+
+            WireFeaturePanel(paint, focus, ui.Paint);
+            WireFeaturePanel(trim, focus, ui.Trim);
+
             AnatomyStylusInput input = EyeAnatomySceneUpgrader.GetOrAdd<AnatomyStylusInput>(exhibit);
             SerializedObject inputSo = new SerializedObject(input);
             EyeAnatomySceneUpgrader.SetIfPresent(inputSo, "stylus", stylus);
             EyeAnatomySceneUpgrader.SetIfPresent(inputSo, "flyController", fly);
+            EyeAnatomySceneUpgrader.SetIfPresent(inputSo, "exhibitController", controller);
             EyeAnatomySceneUpgrader.SetIfPresent(inputSo, "rigRoot", rig.transform);
             inputSo.ApplyModifiedPropertiesWithoutUndo();
+
+            EyeAnatomySceneUpgrader.WireSceneSwitcher(exhibit, ui.NextScene, audio, "EyeAnatomy");
+        }
+
+        /// <summary>
+        /// Puts one swatch set on its own <see cref="ExhibitFeaturePanel"/>, alongside the
+        /// <see cref="VehicleFinishSwatches"/> that does the work.
+        ///
+        /// No transparency button is passed. The panel treats it as optional, and a finish has no
+        /// casing to see through - that feature belongs to the engine, which is where the interface
+        /// came from. The focus view is still handed over, because focusing a part rewrites every
+        /// material and the panel disables what it cannot honour while that is true.
+        /// </summary>
+        private static void WireFeaturePanel(VehicleFinishSwatches swatches, EyeFocusView focus, SwatchRow row) {
+            ExhibitFeaturePanel panel = EyeAnatomySceneUpgrader.GetOrAdd<ExhibitFeaturePanel>(swatches.gameObject);
+            SerializedObject so = new SerializedObject(panel);
+            EyeAnatomySceneUpgrader.SetIfPresent(so, "machinerySource", swatches);
+            EyeAnatomySceneUpgrader.SetIfPresent(so, "focusView", focus);
+            EyeAnatomySceneUpgrader.SetIfPresent(so, "variationLabel", row.NameLabel);
+
+            SetObjectArray(so, "variationButtons", row.Buttons);
+            SetObjectArray(so, "variationMarkers", row.Markers);
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void SetObjectArray(SerializedObject so, string fieldName, Object[] values) {
+            SerializedProperty property = FindField(so, fieldName);
+            if (property == null) {
+                return;
+            }
+
+            property.arraySize = values.Length;
+            for (int i = 0; i < values.Length; i++) {
+                property.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
+            }
+        }
+
+        private static void SetFloat(SerializedObject so, string fieldName, float value) {
+            SerializedProperty property = FindField(so, fieldName);
+            if (property != null) {
+                property.floatValue = value;
+            }
+        }
+
+        private static void SetBool(SerializedObject so, string fieldName, bool value) {
+            SerializedProperty property = FindField(so, fieldName);
+            if (property != null) {
+                property.boolValue = value;
+            }
+        }
+
+        private static void SetString(SerializedObject so, string fieldName, string value) {
+            SerializedProperty property = FindField(so, fieldName);
+            if (property != null) {
+                property.stringValue = value;
+            }
+        }
+
+        private static SerializedProperty FindField(SerializedObject so, string fieldName) {
+            SerializedProperty property = so.FindProperty(fieldName);
+            if (property == null) {
+                Debug.LogWarning($"{nameof(VolvoExhibitBuilder)} found no field '{fieldName}' on " +
+                    $"{so.targetObject.GetType().Name}.");
+            }
+
+            return property;
         }
         /// <summary>
         /// The interface objects the controls component has to be handed.
@@ -877,6 +1695,27 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             public Button Ignition;
             public Button Lights;
             public Button Reset;
+            public Button NextScene;
+            public Button Tour;
+            public TextMeshProUGUI TourLabel;
+            public Button Back;
+            public Button Previous;
+            public Button Next;
+            public TextMeshProUGUI Counter;
+            public TextMeshProUGUI AttractPrompt;
+            public AnatomyInfoPanel InfoPanel;
+            public SwatchRow Paint = new SwatchRow();
+            public SwatchRow Trim = new SwatchRow();
+        }
+
+        /// <summary>
+        /// One row of colour swatches: the chips, the ring on each that marks the chosen one, and
+        /// the label that names it - the chips carry no text of their own.
+        /// </summary>
+        private class SwatchRow {
+            public Button[] Buttons = new Button[0];
+            public GameObject[] Markers = new GameObject[0];
+            public TextMeshProUGUI NameLabel;
         }
 
         /// <summary>
@@ -907,24 +1746,28 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// </summary>
         private static LampSpec[] GetLamps() {
             return new LampSpec[] {
-                new LampSpec("Interior", new Color(2.6f, 2.0f, 1.3f), false, new string[] {
-                    "CeilingConsole", "InfoTainment Screen", "SpeedoScreen", "Shifterknob Crystal" }),
-                new LampSpec("Daytime", new Color(4.5f, 4.8f, 5.4f), false, new string[] {
+                // Subtle warm courtesy illumination on the ceiling console and gear selector
+                new LampSpec("Interior", new Color(0.12f, 0.10f, 0.08f), false, new string[] {
+                    "CeilingConsole", "Shifterknob Crystal" }),
+                // Crisp modern digital display backlight for cockpit screens
+                new LampSpec("Dashboard", new Color(0.55f, 0.62f, 0.72f), false, new string[] {
+                    "InfoTainment Screen", "SpeedoScreen" }),
+                new LampSpec("Daytime", new Color(1.8f, 1.9f, 2.1f), false, new string[] {
                     "Glass Runninglight", "Reflector Runninglight" }),
-                new LampSpec("Headlights", new Color(5.2f, 5.2f, 5.0f), false, new string[] {
+                new LampSpec("Headlights", new Color(2.0f, 2.0f, 1.9f), false, new string[] {
                     "Emitters Headlight", "Reflector Headlight 1", "Reflector Headlight 2",
                     "Reflector Highbeam", "Logo Headlight" }),
-                new LampSpec("Fog", new Color(4.0f, 3.6f, 2.8f), false, new string[] {
+                new LampSpec("Fog", new Color(1.8f, 1.6f, 1.2f), false, new string[] {
                     "Foglight Glass", "Foglight Reflector" }),
-                new LampSpec("Tail", new Color(5.0f, 0.35f, 0.18f), false, new string[] {
+                new LampSpec("Tail", new Color(2.4f, 0.08f, 0.03f), false, new string[] {
                     "MainReflectors Taillight", "Diffusers Taillight", "Reflector 2 Taillight",
                     "Reflector 3 Taillight", "Reflector Cubes Taillight", "Diffuser TrunkTaillight",
                     "Reflector TrunkTaillight", "Reflector 2 Trunktaillight", "Lightbulb TrunkTaillight" }),
-                new LampSpec("Reverse", new Color(4.2f, 4.2f, 4.0f), false, new string[] {
+                new LampSpec("Reverse", new Color(2.0f, 2.0f, 1.9f), false, new string[] {
                     "Diffuser ReverseLight", "Reflector ReverseLight" }),
-                new LampSpec("Indicators", new Color(5.0f, 1.8f, 0.12f), true, new string[] {
-                    "Glass Turnsignal", "Reflector Turnsignal", "MIrrorTurnSignal Glass",
-                    "MirrorTurnsignal Reflector", "Diffuser 3 Taillight", "Side Diffuser Taillight" })
+                new LampSpec("Indicators", new Color(2.4f, 0.8f, 0.03f), true, new string[] {
+                    "Glass Turnsignal", "Reflector Turnsignal", "MirrorTurnsignal Reflector",
+                    "Diffuser 3 Taillight", "Side Diffuser Taillight" })
             };
         }
 
@@ -975,13 +1818,11 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
 
             if (lampName == "Interior") {
                 Light cabin = EnsureChildLight(car, "Cabin Light", LightType.Point,
-                    new Vector3(carBounds.center.x, carBounds.center.y + carBounds.extents.y * 0.4f, carBounds.center.z));
-                cabin.color = new Color(1f, 0.88f, 0.72f);
-                cabin.range = carBounds.size.z * 0.45f;
-                // Tiny, because it sits centimetres from every surface it lights at this scale.
-                // The emissive meshes carry the look of a lit cabin; this only has to lift the
-                // seats and the dash off black.
-                cabin.intensity = 0.09f;
+                    new Vector3(carBounds.center.x, carBounds.center.y + carBounds.extents.y * 0.35f, carBounds.center.z));
+                cabin.color = new Color(1f, 0.92f, 0.82f);
+                // Stays within the cabin volume so it gently accents the interior without bleaching the cabin or leaking through the roof
+                cabin.range = carBounds.size.z * 0.15f;
+                cabin.intensity = 0.0008f;
                 cabin.shadows = LightShadows.None;
                 cabin.enabled = false;
                 return new Light[] { cabin };
@@ -991,15 +1832,14 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         }
 
         private static void ConfigureBeam(Light light, Bounds carBounds) {
-            light.color = new Color(1f, 0.97f, 0.9f);
-            light.range = carBounds.size.z * 2.2f;
-            // Aimed forward and kept modest. There is no fog or floor for a beam to land on, so
-            // this is about putting a glow in front of the car, not about lighting a road.
-            light.intensity = 1.4f;
-            light.spotAngle = 52f;
+            light.color = new Color(1f, 0.97f, 0.92f);
+            light.range = carBounds.size.z * 0.85f;
+            // 0.018f gives two clear, realistic, elegant headlight pools on the floor without clipping or washing out
+            light.intensity = 0.018f;
+            light.spotAngle = 44f;
             light.innerSpotAngle = 22f;
             light.shadows = LightShadows.None;
-            light.transform.rotation = Quaternion.identity;
+            light.transform.localRotation = Quaternion.Euler(4f, 0f, 0f);
             light.enabled = false;
         }
 
@@ -1065,7 +1905,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             EyeAnatomySceneUpgrader.SetIfPresent(so, "lights", lights);
             EyeAnatomySceneUpgrader.SetIfPresent(so, "startSource", start);
             EyeAnatomySceneUpgrader.SetIfPresent(so, "idleSource", idle);
-            SetStringArray(so, "accessoryChannels", new string[] { "Interior" });
+            SetStringArray(so, "accessoryChannels", new string[] { "Interior", "Dashboard" });
             SetStringArray(so, "runningChannels", new string[] { "Daytime", "Headlights", "Tail", "Fog", "Indicators" });
             so.ApplyModifiedPropertiesWithoutUndo();
             return ignition;
@@ -1104,20 +1944,57 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         private static VolvoUi BuildUi(GameObject ui, Camera camera, List<VehiclePanelGroup> groups) {
             VolvoUi result = new VolvoUi();
             RectTransform rect = ExhibitUiFactory.BuildWorldCanvas(ui, camera);
+            Vector2 topLeft = new Vector2(0f, 1f);
+            Vector2 topRight = new Vector2(1f, 1f);
+            Vector2 bottomLeft = new Vector2(0f, 0f);
+            Vector2 bottomCenter = new Vector2(0.5f, 0f);
+            Vector2 bottomRight = new Vector2(1f, 0f);
 
-            TextMeshProUGUI title = ExhibitUiFactory.BuildLabel(rect, "Title", "Volvo S90", 52f,
-                new Vector2(0.5f, 1f), new Vector2(0f, -48f), new Vector2(1200f, 72f), TextAlignmentOptions.Center);
+            TextMeshProUGUI title = ExhibitUiFactory.BuildLabel(rect, "Title", "Volvo S90", 22f,
+                topLeft, new Vector2(24f, -18f), new Vector2(360f, 28f), TextAlignmentOptions.Left);
             title.fontStyle = FontStyles.Bold;
 
+            // Bottom-Left: Start the tour & Back to the car
+            result.Tour = ExhibitUiFactory.BuildIconButton(rect, "TourButton", "Start the tour",
+                ExhibitIconFactory.Tour,
+                bottomLeft, new Vector2(24f, 24f), new Vector2(166f, 36f), 14f);
+            result.TourLabel = result.Tour.GetComponentInChildren<TextMeshProUGUI>(true);
+            result.Back = ExhibitUiFactory.BuildButton(rect, "BackButton", "Back to the car",
+                bottomLeft, new Vector2(24f, 68f), new Vector2(150f, 32f), 13.5f);
+
+            // Bottom-Center: < Back, Counter, Next >, AttractPrompt
+            result.Previous = ExhibitUiFactory.BuildButton(rect, "PreviousButton", "< Back",
+                bottomCenter, new Vector2(-116f, 24f), new Vector2(84f, 34f), 14f);
+            result.Counter = ExhibitUiFactory.BuildLabel(rect, "PartCounter", "-", 14f,
+                bottomCenter, new Vector2(0f, 24f), new Vector2(120f, 34f), TextAlignmentOptions.Center);
+            result.Counter.color = new Color(0.76f, 0.90f, 1.00f, 0.95f);
+            result.Next = ExhibitUiFactory.BuildButton(rect, "NextButton", "Next >",
+                bottomCenter, new Vector2(116f, 24f), new Vector2(84f, 34f), 14f);
+            result.AttractPrompt = ExhibitUiFactory.BuildLabel(rect, "AttractPrompt",
+                "Touch the car to explore it", 14f,
+                bottomCenter, new Vector2(0f, 64f), new Vector2(420f, 24f), TextAlignmentOptions.Center);
+            result.AttractPrompt.color = new Color(0.75f, 0.90f, 1.00f, 0.92f);
+
+            // Bottom-Right: Reset view & Next Scene side-by-side
+            result.Reset = ExhibitUiFactory.BuildIconButton(rect, "ResetButton", "Reset view",
+                ExhibitIconFactory.Reset,
+                bottomRight, new Vector2(-168f, 24f), new Vector2(134f, 36f), 14f);
+            result.NextScene = ExhibitUiFactory.BuildButton(rect, "NextSceneButton", "Next Scene",
+                bottomRight, new Vector2(-24f, 24f), new Vector2(136f, 36f), 14f);
+
+            // Top-Left below Title: Panel buttons (Doors, Sunroof), Ignition & Lights in a compact left column
             result.PanelButtons = new Button[groups.Count];
             for (int i = 0; i < groups.Count; i++) {
-                result.PanelButtons[i] = ExhibitUiFactory.BuildButton(rect, "PanelButton" + (i + 1),
-                    groups[i].OpenLabel, new Vector2(0f, 1f), new Vector2(24f, -24f - i * 72f), new Vector2(380f, 64f));
+                string glyph = groups[i].DisplayName == "Sunroof"
+                    ? ExhibitIconFactory.Sunroof
+                    : ExhibitIconFactory.Doors;
+                float y = -56f - i * 38f;
+                result.PanelButtons[i] = ExhibitUiFactory.BuildIconButton(rect, "PanelButton" + (i + 1),
+                    groups[i].OpenLabel, glyph, topLeft, new Vector2(24f, y),
+                    new Vector2(158f, 32f), 13f);
                 EyeAnatomySceneUpgrader.AddMotion(result.PanelButtons[i].gameObject, false);
             }
 
-            // A group withdrawn from the spec leaves its button behind, because the factory finds
-            // a button by name before it makes one.
             const int MaxPanelButtons = 16;
             for (int i = groups.Count; i < MaxPanelButtons; i++) {
                 Transform surplus = rect.Find("PanelButton" + (i + 1));
@@ -1128,17 +2005,78 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
                 Undo.DestroyObjectImmediate(surplus.gameObject);
             }
 
-            result.Ignition = ExhibitUiFactory.BuildButton(rect, "IgnitionButton", "Start the car",
-                new Vector2(0f, 0f), new Vector2(24f, 24f), new Vector2(380f, 88f));
-            result.Lights = ExhibitUiFactory.BuildButton(rect, "LightsButton", "Lights on",
-                new Vector2(0f, 0f), new Vector2(24f, 124f), new Vector2(380f, 64f));
-            result.Reset = ExhibitUiFactory.BuildButton(rect, "ResetButton", "Reset view",
-                new Vector2(1f, 0f), new Vector2(-24f, 24f), new Vector2(380f, 88f));
+            float ignitionY = -56f - groups.Count * 38f - 4f;
+            result.Ignition = ExhibitUiFactory.BuildIconButton(rect, "IgnitionButton", "Start the car",
+                ExhibitIconFactory.Ignition,
+                topLeft, new Vector2(24f, ignitionY), new Vector2(158f, 34f), 13.5f);
+            result.Lights = ExhibitUiFactory.BuildIconButton(rect, "LightsButton", "Lights on",
+                ExhibitIconFactory.Lights,
+                topLeft, new Vector2(24f, ignitionY - 40f), new Vector2(158f, 34f), 13.5f);
+
+            // Lower-Left below Lights: compact Paint & Interior Trim swatches so Top-Right stays 100% dedicated to InfoPanel
+            float paintTopY = ignitionY - 88f;
+            result.Paint = BuildSwatchRow(rect, "PaintSwatch", "PaintCaption", "PAINT", "PaintName",
+                24f, paintTopY, GetPaintNames(), GetPaintChipColors());
+            result.Trim = BuildSwatchRow(rect, "TrimSwatch", "TrimCaption", "INTERIOR", "TrimName",
+                24f, paintTopY - 72f, GetTrimNames(), GetTrimChipColors());
+
+            // Top-Right: Information text panel (InfoPanel)
+            result.InfoPanel = ExhibitUiFactory.BuildInfoPanel(rect, topRight,
+                new Vector2(-24f, -24f), new Vector2(410f, 145f));
 
             EyeAnatomySceneUpgrader.AddMotion(result.Ignition.gameObject, true);
             EyeAnatomySceneUpgrader.AddMotion(result.Lights.gameObject, false);
             EyeAnatomySceneUpgrader.AddMotion(result.Reset.gameObject, false);
+            EyeAnatomySceneUpgrader.AddMotion(result.NextScene.gameObject, false);
+            EyeAnatomySceneUpgrader.AddMotion(result.Tour.gameObject, true);
+            EyeAnatomySceneUpgrader.AddMotion(result.Back.gameObject, false);
+            EyeAnatomySceneUpgrader.AddMotion(result.Previous.gameObject, false);
+            EyeAnatomySceneUpgrader.AddMotion(result.Next.gameObject, false);
             return result;
+        }
+
+        private static SwatchRow BuildSwatchRow(RectTransform parent, string namePrefix, string captionName,
+            string caption, string nameLabelName, float left, float top, string[] labels, Color[] chipColours) {
+
+            const float ChipSize = 26f;
+            const float ChipStep = 31f;
+            Vector2 topLeft = new Vector2(0f, 1f);
+
+            TextMeshProUGUI captionLabel = ExhibitUiFactory.BuildLabel(parent, captionName, caption, 11.5f,
+                topLeft, new Vector2(left, top), new Vector2(160f, 16f), TextAlignmentOptions.Left);
+            captionLabel.color = new Color(0.56f, 0.82f, 0.98f, 0.90f);
+            captionLabel.fontStyle = FontStyles.Bold;
+
+            SwatchRow row = new SwatchRow();
+            row.Buttons = new Button[labels.Length];
+            row.Markers = new GameObject[labels.Length];
+
+            for (int i = 0; i < labels.Length; i++) {
+                float x = left + i * ChipStep;
+                ExhibitUiFactory.SwatchChip chip = ExhibitUiFactory.BuildSwatchChip(parent,
+                    namePrefix + (i + 1), i < chipColours.Length ? chipColours[i] : Color.grey,
+                    topLeft, new Vector2(x, top - 18f), new Vector2(ChipSize, ChipSize));
+
+                row.Buttons[i] = chip.Button;
+                row.Markers[i] = chip.Marker;
+                EyeAnatomySceneUpgrader.AddMotion(chip.Button.gameObject, false);
+            }
+
+            row.NameLabel = ExhibitUiFactory.BuildLabel(parent, nameLabelName, labels.Length > 0 ? labels[0] : "-",
+                13.5f, topLeft, new Vector2(left, top - 48f), new Vector2(160f, 18f),
+                TextAlignmentOptions.Left);
+
+            const int MaxSwatches = 12;
+            for (int i = labels.Length; i < MaxSwatches; i++) {
+                Transform surplus = parent.Find(namePrefix + (i + 1));
+                if (surplus == null) {
+                    continue;
+                }
+
+                Undo.DestroyObjectImmediate(surplus.gameObject);
+            }
+
+            return row;
         }
 
         private static void WireControls(GameObject exhibit, List<VehiclePanelGroup> groups,
@@ -1175,6 +2113,205 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             for (int i = 0; i < values.Length; i++) {
                 property.GetArrayElementAtIndex(i).stringValue = values[i];
             }
+        }
+
+        /// <summary>
+        /// One interior material, and which of its shipped textures each trim swatch puts on it.
+        /// </summary>
+        private class TrimSpec {
+            public string Material;
+            public string Folder;
+            public string Prefix;
+            public string[] Variants;
+
+            public TrimSpec(string material, string folder, string prefix, string[] variants) {
+                Material = material;
+                Folder = folder;
+                Prefix = prefix;
+                Variants = variants;
+            }
+        }
+
+        private static string[] GetPaintNames() {
+            return new string[] { "Onyx Black", "Crystal White", "Denim Blue", "Osmium Grey", "Fusion Red" };
+        }
+
+        /// <summary>
+        /// The paint swatches, as base colours.
+        ///
+        /// <c>Car Paint</c> is a single untextured material covering the whole body - shell,
+        /// bumpers, wings, both door skins, the hood and the boot lid - so a colour is the entire
+        /// change. Its clear-coat smoothness of 0.69 is what makes these read as car paint rather
+        /// than as flat plastic, and it is left alone.
+        ///
+        /// The first swatch is the black the model ships with, exactly, so that the panel applying
+        /// its default selection on the first frame changes nothing the viewer can see.
+        /// </summary>
+        private static Color[] GetPaintColors() {
+            return new Color[] {
+                new Color(0f, 0f, 0f),
+                new Color(0.66f, 0.67f, 0.68f),
+                new Color(0.02f, 0.05f, 0.16f),
+                new Color(0.10f, 0.11f, 0.12f),
+                new Color(0.30f, 0.015f, 0.02f)
+            };
+        }
+
+        /// <summary>
+        /// The same paints as the swatches show them.
+        ///
+        /// Converted out of linear, because <c>_BaseColor</c> is a shader constant and a UI
+        /// <c>Image</c>'s colour is not: handing the same numbers to both would draw Crystal White
+        /// as a mid grey and Fusion Red as near-black. Then lifted, because a chip is a flat fill
+        /// and a car body is a clear-coated surface read almost entirely from its highlight - the
+        /// paint that reads as red on a wing reads as dried blood on a square.
+        /// </summary>
+        private static Color[] GetPaintChipColors() {
+            Color[] paints = GetPaintColors();
+            Color[] chips = new Color[paints.Length];
+
+            for (int i = 0; i < paints.Length; i++) {
+                Color display = paints[i].gamma;
+                chips[i] = new Color(
+                    Mathf.Lerp(display.r, 1f, 0.18f),
+                    Mathf.Lerp(display.g, 1f, 0.18f),
+                    Mathf.Lerp(display.b, 1f, 0.18f),
+                    1f);
+            }
+
+            return chips;
+        }
+
+        private static string[] GetTrimNames() {
+            return new string[] { "Black", "Blue", "Brown", "Tan" };
+        }
+
+        /// <summary>
+        /// The interior swatches as chips.
+        ///
+        /// Authored rather than sampled from the textures they stand for: the interior maps import
+        /// without read/write access, so averaging one at build time would mean flipping its
+        /// importer, and an average of a leather map is a muddy grey anyway - the colour a viewer
+        /// would call "Brown" is the colour of the hide, not the mean of its creases and shadows.
+        /// </summary>
+        private static Color[] GetTrimChipColors() {
+            return new Color[] {
+                new Color(0.13f, 0.13f, 0.14f),
+                new Color(0.20f, 0.28f, 0.47f),
+                new Color(0.40f, 0.25f, 0.16f),
+                new Color(0.80f, 0.72f, 0.58f)
+            };
+        }
+
+        /// <summary>
+        /// The interior swatches, as base maps.
+        ///
+        /// The model ships a full set of interior textures and they are not symmetric: the console,
+        /// the seats and the door cards have four apiece, but the dashboard's black and blue are
+        /// one texture, the shell's blue and brown are one, and the steering wheel has only black
+        /// and tan. The table repeats a texture wherever the source does, which is what keeps the
+        /// four swatches whole - a missing entry would leave one surface behind on the last choice.
+        ///
+        /// Every first column is the texture the material already carries, so the default selection
+        /// is a no-op like the paint's.
+        /// </summary>
+        private static TrimSpec[] GetTrimSpecs() {
+            return new TrimSpec[] {
+                new TrimSpec("Shell", "Shell", "Shell_Base_Color",
+                    new string[] { "Black", "BlueBrown", "BlueBrown", "Tan" }),
+                new TrimSpec("Dashboard", "Dashboard", "Dashboard_Base_Color",
+                    new string[] { "BlackBlue", "BlackBlue", "Brown", "Tan" }),
+                new TrimSpec("CenterConsole", "CenterConsole", "CenterConsole_Base_Color",
+                    new string[] { "Black", "Blue", "Brown", "Tan" }),
+                new TrimSpec("Front Seat", "Seats/Front", "Front_Seat_Base_Color",
+                    new string[] { "black", "Blue", "Brown", "Tan" }),
+                new TrimSpec("Rear Seats", "Seats/Rear", "Rear Seats_Base_Color",
+                    new string[] { "Black", "Blue", "Brown", "Tan" }),
+                new TrimSpec("Steeringwheel", "SteeringWheel", "Steeringwheel_Base_Color",
+                    new string[] { "Black", "Black", "Black", "Tan" }),
+                new TrimSpec("DoorPanelFront", "DoorPanels/Front", "DoorPanelFront_Base_Color",
+                    new string[] { "Black", "Blue", "Brown", "Tan" }),
+                new TrimSpec("DoorPanelRear", "DoorPanels/Rear", "DoorPanelRear_Base_Color",
+                    new string[] { "Black", "Blue", "Brown", "Tan" })
+            };
+        }
+
+        /// <summary>
+        /// Puts the paint swatches on their own node under the exhibit.
+        ///
+        /// Each swatch set gets a node of its own because each needs its own
+        /// <see cref="ExhibitFeaturePanel"/>, and that component holds one run of variants - the
+        /// shape it was written for. Two of them on the exhibit root would be indistinguishable to
+        /// every find-before-create step in this file.
+        /// </summary>
+        private static VehicleFinishSwatches BuildPaintSwatches(GameObject exhibit, Transform car, EyeFocusView focus) {
+            GameObject host = EyeAnatomySceneUpgrader.FindOrCreateChild(exhibit.transform, PaintFeatureName);
+            VehicleFinishSwatches swatches = EyeAnatomySceneUpgrader.GetOrAdd<VehicleFinishSwatches>(host);
+            WireSwatches(swatches, car, focus);
+
+            Material paint = FindMaterial("Car Paint");
+            if (paint == null) {
+                Debug.LogError($"{nameof(VolvoExhibitBuilder)} could not find the 'Car Paint' material; " +
+                    "the paint swatches are empty.");
+                swatches.SetSwatches(new string[0], new VehicleFinishTarget[0]);
+                EditorUtility.SetDirty(swatches);
+                return swatches;
+            }
+
+            VehicleFinishTarget target = new VehicleFinishTarget(paint, new Texture2D[0], GetPaintColors());
+            swatches.SetSwatches(GetPaintNames(), new VehicleFinishTarget[] { target });
+            EditorUtility.SetDirty(swatches);
+            return swatches;
+        }
+
+        private static VehicleFinishSwatches BuildTrimSwatches(GameObject exhibit, Transform car, EyeFocusView focus) {
+            GameObject host = EyeAnatomySceneUpgrader.FindOrCreateChild(exhibit.transform, TrimFeatureName);
+            VehicleFinishSwatches swatches = EyeAnatomySceneUpgrader.GetOrAdd<VehicleFinishSwatches>(host);
+            WireSwatches(swatches, car, focus);
+
+            string[] names = GetTrimNames();
+            TrimSpec[] specs = GetTrimSpecs();
+            List<VehicleFinishTarget> targets = new List<VehicleFinishTarget>();
+
+            for (int i = 0; i < specs.Length; i++) {
+                Material material = FindMaterial(specs[i].Material);
+                if (material == null) {
+                    Debug.LogError($"{nameof(VolvoExhibitBuilder)} could not find the " +
+                        $"'{specs[i].Material}' material; that surface will not change with the trim.");
+                    continue;
+                }
+
+                Texture2D[] maps = new Texture2D[names.Length];
+                bool complete = true;
+
+                for (int j = 0; j < names.Length; j++) {
+                    string path = $"{InteriorTextureRoot}/{specs[i].Folder}/{specs[i].Prefix} {specs[i].Variants[j]}.png";
+                    maps[j] = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+
+                    if (maps[j] == null) {
+                        Debug.LogError($"{nameof(VolvoExhibitBuilder)} could not load '{path}'; " +
+                            $"'{specs[i].Material}' will not change with the trim.");
+                        complete = false;
+                    }
+                }
+
+                if (!complete) {
+                    continue;
+                }
+
+                targets.Add(new VehicleFinishTarget(material, maps, new Color[0]));
+            }
+
+            swatches.SetSwatches(names, targets.ToArray());
+            EditorUtility.SetDirty(swatches);
+            return swatches;
+        }
+
+        private static void WireSwatches(VehicleFinishSwatches swatches, Transform car, EyeFocusView focus) {
+            SerializedObject so = new SerializedObject(swatches);
+            EyeAnatomySceneUpgrader.SetIfPresent(so, "modelRoot", car);
+            EyeAnatomySceneUpgrader.SetIfPresent(so, "focusView", focus);
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         /// <summary>
@@ -1245,7 +2382,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         }
 
         private static Material FindMaterial(string name) {
-            string[] guids = AssetDatabase.FindAssets("t:Material", new string[] { VolvoRoot + "/mat" });
+            string[] guids = AssetDatabase.FindAssets("t:Material", new string[] { MaterialRoot });
 
             for (int i = 0; i < guids.Length; i++) {
                 string path = AssetDatabase.GUIDToAssetPath(guids[i]);

@@ -36,6 +36,7 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         private const string AudioRootName = "Audio";
         private const string NextButtonName = "NextButton";
         private const string PreviousButtonName = "PreviousButton";
+        private const string NextSceneButtonName = "NextSceneButton";
         private const string PartCounterName = "PartCounter";
         private const string AttractPromptName = "AttractPrompt";
 
@@ -77,7 +78,8 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             UpgradeLighting();
             UpgradeFocusView(exhibit);
             UpgradeScaleBox(exhibit);
-            UpgradeCanvasDepth(ui);
+            UpgradeCanvasDepth(ui, camera);
+            UpgradeMaterialsDoubleSided();
 
             KmaxStylus stylus = BuildStylus(rig, camera);
             AnatomyAudioDirector audio = BuildAudio();
@@ -184,6 +186,13 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             beamSo.FindProperty("beam").objectReferenceValue = line;
             beamSo.FindProperty("tip").objectReferenceValue = tipObject.transform;
             beamSo.FindProperty("tipRenderer").objectReferenceValue = tipRenderer;
+            beamSo.FindProperty("idleColor").colorValue = new Color(0.45f, 0.72f, 0.95f, 0.30f);
+            beamSo.FindProperty("hitColor").colorValue = new Color(0.55f, 0.90f, 1.00f, 0.85f);
+            beamSo.FindProperty("button0PressColor").colorValue = new Color(1.00f, 0.78f, 0.20f, 1.00f);
+            beamSo.FindProperty("button1PressColor").colorValue = new Color(0.86f, 0.36f, 1.00f, 1.00f);
+            beamSo.FindProperty("button2PressColor").colorValue = new Color(1.00f, 0.38f, 0.26f, 1.00f);
+            beamSo.FindProperty("selectElementPressColor").colorValue = new Color(0.16f, 0.96f, 0.46f, 1.00f);
+            beamSo.FindProperty("pressColorBlendTime").floatValue = 0.02f;
             beamSo.ApplyModifiedPropertiesWithoutUndo();
 
             PenTracker tracker = GetOrAdd<PenTracker>(pen);
@@ -254,9 +263,26 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
                 // Started by the component only while something is selected.
                 halo.gameObject.SetActive(false);
 
+                SphereCollider sphere = contents.GetComponent<SphereCollider>();
+                if (sphere != null) {
+                    sphere.radius = 0.68f;
+                }
+
                 SerializedObject so = new SerializedObject(hotspot);
                 so.FindProperty("selectionHalo").objectReferenceValue = halo;
                 so.FindProperty("haloRenderer").objectReferenceValue = halo.GetComponent<Renderer>();
+                SerializedProperty idleProp = so.FindProperty("idleBadgeColor");
+                if (idleProp != null) {
+                    idleProp.colorValue = new Color(0.22f, 0.78f, 0.98f, 0.92f);
+                }
+                SerializedProperty hoverProp = so.FindProperty("hoverBadgeColor");
+                if (hoverProp != null) {
+                    hoverProp.colorValue = new Color(0.28f, 0.98f, 0.86f, 1.00f);
+                }
+                SerializedProperty selectProp = so.FindProperty("selectedBadgeColor");
+                if (selectProp != null) {
+                    selectProp.colorValue = new Color(1.00f, 0.78f, 0.22f, 1.00f);
+                }
                 so.ApplyModifiedPropertiesWithoutUndo();
 
                 PrefabUtility.SaveAsPrefabAsset(contents, HotspotPrefabPath);
@@ -405,6 +431,9 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             Tonemapping tonemapping;
             if (!profile.TryGet(out tonemapping)) {
                 tonemapping = profile.Add<Tonemapping>(true);
+                if (EditorUtility.IsPersistent(profile)) {
+                    AssetDatabase.AddObjectToAsset(tonemapping, profile);
+                }
             }
 
             tonemapping.active = true;
@@ -416,19 +445,23 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             Bloom bloom;
             if (!profile.TryGet(out bloom)) {
                 bloom = profile.Add<Bloom>(true);
+                if (EditorUtility.IsPersistent(profile)) {
+                    AssetDatabase.AddObjectToAsset(bloom, profile);
+                }
             }
 
             bloom.active = true;
             bloom.threshold.overrideState = true;
-            bloom.threshold.value = 0.95f;
+            bloom.threshold.value = 1.0f;
             bloom.intensity.overrideState = true;
-            bloom.intensity.value = 0.55f;
+            bloom.intensity.value = 0.40f;
             bloom.scatter.overrideState = true;
-            bloom.scatter.value = 0.62f;
+            bloom.scatter.value = 0.52f;
             bloom.tint.overrideState = true;
             bloom.tint.value = new Color(0.85f, 0.92f, 1f);
 
             EditorUtility.SetDirty(profile);
+            AssetDatabase.SaveAssets();
 
             GameObject host = FindRoot(PostFxName);
             if (host == null) {
@@ -460,7 +493,63 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         /// Measured before and after: mean luminance with every light on versus every light off
         /// differed by 0.0000 under the 2D renderer and by 0.0443 under this one.
         /// </summary>
+        /// <summary>
+        /// Sizes the pipeline's quality settings to the scale these exhibits actually work at.
+        ///
+        /// Everything here was at a desktop-game default and therefore doing nothing. The shadow
+        /// distance was **50 m** over a 2048 shadow map, which is 24 mm of world per texel - about
+        /// eleven texels across a car 260 mm long, and fewer than five across the eye. Soft shadows
+        /// were off and so was antialiasing. Every exhibit in this module is a small object filling
+        /// a screen a third of a metre wide, so a shadow distance of 2 m covers the whole orbit
+        /// range and buys back a factor of twenty-five in shadow resolution.
+        ///
+        /// Applied here rather than in any one builder because the URP asset is shared by all
+        /// three. Split across the builders it would be whichever ran last that won.
+        /// </summary>
+        internal static void UpgradeRenderQuality() {
+            UniversalRenderPipelineAsset urp =
+                UnityEngine.Rendering.GraphicsSettings.defaultRenderPipeline as UniversalRenderPipelineAsset;
+            if (urp == null) {
+                return;
+            }
+
+            SerializedObject so = new SerializedObject(urp);
+            SetPipelineFloat(so, "m_ShadowDistance", 2f);
+            SetPipelineBool(so, "m_SoftShadowsSupported", true);
+            SetPipelineBool(so, "m_AnyShadowsSupported", true);
+            SetPipelineBool(so, "m_MainLightShadowsSupported", true);
+            // 4x. These are small, curved, high-contrast silhouettes against a near-black backdrop,
+            // which is the case aliasing shows up worst on, and the rig had headroom: 6.5M
+            // triangles across both eyes was running at 105-164 fps.
+            SetPipelineInt(so, "m_MSAA", 4);
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(urp);
+        }
+
+        private static void SetPipelineFloat(SerializedObject so, string fieldName, float value) {
+            SerializedProperty property = so.FindProperty(fieldName);
+            if (property != null) {
+                property.floatValue = value;
+            }
+        }
+
+        private static void SetPipelineInt(SerializedObject so, string fieldName, int value) {
+            SerializedProperty property = so.FindProperty(fieldName);
+            if (property != null) {
+                property.intValue = value;
+            }
+        }
+
+        private static void SetPipelineBool(SerializedObject so, string fieldName, bool value) {
+            SerializedProperty property = so.FindProperty(fieldName);
+            if (property != null) {
+                property.boolValue = value;
+            }
+        }
+
         internal static void UpgradeRenderPipeline() {
+            UpgradeRenderQuality();
+
             UniversalRenderPipelineAsset urp =
                 UnityEngine.Rendering.GraphicsSettings.defaultRenderPipeline as UniversalRenderPipelineAsset;
             if (urp == null) {
@@ -585,10 +674,48 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         }
 
         /// <summary>
-        /// Takes the interface out of the depth test so the anatomy can never cover it.
+        /// Takes the interface out of the depth test and ensures UI raycasting sorts ahead of 3D physics.
         /// </summary>
-        private static void UpgradeCanvasDepth(GameObject ui) {
-            GetOrAdd<UiAlwaysOnTop>(ui);
+        private static void UpgradeCanvasDepth(GameObject ui, Camera camera) {
+            ExhibitUiFactory.BuildWorldCanvas(ui, camera);
+        }
+
+        /// <summary>
+        /// Configures all material assets and scene renderers in the module to render double-sided
+        /// (Cull Off) so interior and back-facing geometry never disappears when orbited or exploded.
+        /// </summary>
+        internal static void UpgradeMaterialsDoubleSided() {
+            string[] matGuids = AssetDatabase.FindAssets("t:Material", new string[] { "Assets/Games/kmax-display-example" });
+            for (int i = 0; i < matGuids.Length; i++) {
+                string path = AssetDatabase.GUIDToAssetPath(matGuids[i]);
+                Object[] assets = AssetDatabase.LoadAllAssetsAtPath(path);
+                for (int j = 0; j < assets.Length; j++) {
+                    Material mat = assets[j] as Material;
+                    if (mat != null) {
+                        ExhibitPostProcessing.MakeMaterialDoubleSided(mat);
+                        EditorUtility.SetDirty(mat);
+                    }
+                }
+            }
+
+            Renderer[] renderers = Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (int i = 0; i < renderers.Length; i++) {
+                if (renderers[i] == null) {
+                    continue;
+                }
+
+                Material[] mats = renderers[i].sharedMaterials;
+                if (mats == null) {
+                    continue;
+                }
+
+                for (int j = 0; j < mats.Length; j++) {
+                    if (mats[j] != null) {
+                        ExhibitPostProcessing.MakeMaterialDoubleSided(mats[j]);
+                        EditorUtility.SetDirty(mats[j]);
+                    }
+                }
+            }
         }
 
         internal static AnatomyAudioDirector BuildAudio() {
@@ -598,7 +725,20 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
                 Undo.RegisterCreatedObjectUndo(root, "Create Audio root");
             }
 
-            return GetOrAdd<AnatomyAudioDirector>(root);
+            AnatomyAudioDirector director = GetOrAdd<AnatomyAudioDirector>(root);
+            AudioClip soothing = EyeAnatomyAssetFactory.GetOrCreateSoothingMusic();
+            if (soothing != null) {
+                SerializedObject so = new SerializedObject(director);
+                SetIfPresent(so, "musicOverride", soothing);
+                SerializedProperty vol = so.FindProperty("musicVolume");
+                if (vol != null) {
+                    vol.floatValue = 0.28f;
+                }
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            EditorUtility.SetDirty(director);
+            return director;
         }
 
         /// <summary>
@@ -805,20 +945,29 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
         private struct NavigationUi {
             public Button Next;
             public Button Previous;
+            public Button NextScene;
             public TextMeshProUGUI Counter;
             public TextMeshProUGUI AttractPrompt;
         }
 
         /// <summary>
-        /// Adds the Next and Back navigator across the bottom centre of the canvas, between the
-        /// existing bottom-left and bottom-right button stacks.
-        ///
-        /// The buttons are cloned from the existing Expand button so they inherit its sprite,
-        /// colours and font exactly - building them from scratch would mean reproducing a style
-        /// that already exists and drifting from it the first time someone retouches it.
+        /// Positions Eye Anatomy UI into a balanced, compact perimeter layout:
+        /// Title at top-left, InfoPanel at top-right, Expand/Back at bottom-left,
+        /// part navigator at bottom-center, and Reset/Next Scene at bottom-right.
         /// </summary>
         private static NavigationUi BuildNavigationUi(GameObject ui) {
             NavigationUi result = new NavigationUi();
+            RectTransform canvasRect = ui.GetComponent<RectTransform>();
+
+            Vector2 topLeft = new Vector2(0f, 1f);
+            Vector2 topRight = new Vector2(1f, 1f);
+            Vector2 bottomLeft = new Vector2(0f, 0f);
+            Vector2 bottomCenter = new Vector2(0.5f, 0f);
+            Vector2 bottomRight = new Vector2(1f, 0f);
+
+            TextMeshProUGUI title = ExhibitUiFactory.BuildLabel(canvasRect, "Title", "Eye Anatomy", 22f,
+                topLeft, new Vector2(24f, -18f), new Vector2(360f, 28f), TextAlignmentOptions.Left);
+            title.fontStyle = FontStyles.Bold;
 
             Button template = FindChildComponent<Button>(ui.transform, "ExpandButton");
             if (template == null) {
@@ -827,120 +976,171 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
                 return result;
             }
 
-            result.Previous = CloneButton(ui.transform, template, PreviousButtonName, "< Back", new Vector2(-250f, 32f));
-            result.Next = CloneButton(ui.transform, template, NextButtonName, "Next >", new Vector2(250f, 32f));
-            result.Counter = BuildCounter(ui.transform, template);
-            result.AttractPrompt = BuildAttractPrompt(ui.transform, template);
+            // Bottom-Left: ExpandButton (primary) & BackButton above it
+            PositionButton(template, bottomLeft, new Vector2(24f, 24f), new Vector2(162f, 36f), 14f, true);
 
-            // Every button gets the press and hover motion, including the ones that were already
-            // there - on a stereo panel scale is the only hover cue that survives being looked at
-            // from an angle with two eyes.
+            Button backButton = FindChildComponent<Button>(ui.transform, "BackButton");
+            if (backButton != null) {
+                PositionButton(backButton, bottomLeft, new Vector2(24f, 68f), new Vector2(148f, 32f), 13.5f, false);
+            }
+
+            // Bottom-Center: < Back, PartCounter, Next >, and AttractPrompt above them
+            result.Previous = CloneCornerButton(ui.transform, template, PreviousButtonName, "< Back",
+                bottomCenter, new Vector2(-116f, 24f), new Vector2(84f, 34f), 14f);
+            result.Counter = BuildCounter(ui.transform, template, bottomCenter, new Vector2(0f, 24f), new Vector2(120f, 34f), 14f);
+            result.Next = CloneCornerButton(ui.transform, template, NextButtonName, "Next >",
+                bottomCenter, new Vector2(116f, 24f), new Vector2(84f, 34f), 14f);
+            result.AttractPrompt = BuildAttractPrompt(ui.transform, template, bottomCenter, new Vector2(0f, 64f), new Vector2(420f, 24f), 14f);
+
+            // Bottom-Right: Reset view & Next Scene side-by-side
+            Button resetButton = FindChildComponent<Button>(ui.transform, "ResetButton");
+            if (resetButton != null) {
+                PositionButton(resetButton, bottomRight, new Vector2(-168f, 24f), new Vector2(134f, 36f), 14f, false);
+            }
+
+            result.NextScene = CloneCornerButton(ui.transform, template, NextSceneButtonName, "Next Scene",
+                bottomRight, new Vector2(-24f, 24f), new Vector2(136f, 36f), 14f);
+
+            // Top-Right: Information text panel (InfoPanel)
+            ExhibitUiFactory.BuildInfoPanel(canvasRect, topRight, new Vector2(-24f, -24f), new Vector2(410f, 145f));
+
             AddMotion(template.gameObject, idlePulse: true);
             AddMotion(result.Previous, false);
             AddMotion(result.Next, false);
-            AddMotion(FindChildComponent<Button>(ui.transform, "BackButton"), false);
-            AddMotion(FindChildComponent<Button>(ui.transform, "ResetButton"), false);
+            AddMotion(result.NextScene, false);
+            AddMotion(backButton, false);
+            AddMotion(resetButton, false);
 
             return result;
         }
 
-        private static Button CloneButton(Transform parent, Button template, string name, string label, Vector2 anchoredPosition) {
-            Button existing = FindChildComponent<Button>(parent, name);
-            if (existing != null) {
-                return existing;
-            }
-
-            GameObject created = Object.Instantiate(template.gameObject, parent, false);
-            created.name = name;
-            Undo.RegisterCreatedObjectUndo(created, "Create " + name);
-
-            RectTransform rect = created.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0.5f, 0f);
-            rect.anchorMax = new Vector2(0.5f, 0f);
-            rect.pivot = new Vector2(0.5f, 0f);
-            rect.sizeDelta = new Vector2(200f, 88f);
+        private static void PositionButton(Button button, Vector2 anchor, Vector2 anchoredPosition, Vector2 size, float fontSize, bool primaryAccent) {
+            RectTransform rect = button.GetComponent<RectTransform>();
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = anchor;
+            rect.sizeDelta = size;
             rect.anchoredPosition = anchoredPosition;
 
-            TextMeshProUGUI text = created.GetComponentInChildren<TextMeshProUGUI>(true);
+            ExhibitUiFactory.ApplyModernButtonStyle(button, primaryAccent);
+
+            TextMeshProUGUI text = button.GetComponentInChildren<TextMeshProUGUI>(true);
             if (text != null) {
-                text.text = label;
+                text.fontSize = fontSize;
+                text.fontStyle = primaryAccent ? FontStyles.Bold : FontStyles.Normal;
+                text.color = new Color(0.95f, 0.98f, 1f, 0.98f);
             }
 
-            Button button = created.GetComponent<Button>();
+            EditorUtility.SetDirty(rect);
+        }
+
+        private static Button CloneCornerButton(Transform parent, Button template, string name, string label,
+            Vector2 anchor, Vector2 anchoredPosition, Vector2 size, float fontSize) {
+            Button existing = FindChildComponent<Button>(parent, name);
+            GameObject target;
+
+            if (existing != null) {
+                target = existing.gameObject;
+            } else {
+                target = Object.Instantiate(template.gameObject, parent, false);
+                target.name = name;
+                Undo.RegisterCreatedObjectUndo(target, "Create " + name);
+            }
+
+            target.SetActive(true);
+
+            RectTransform rect = target.GetComponent<RectTransform>();
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = anchor;
+            rect.sizeDelta = size;
+            rect.anchoredPosition = anchoredPosition;
+
+            Button button = target.GetComponent<Button>();
+            ExhibitUiFactory.ApplyModernButtonStyle(button, false);
+
+            TextMeshProUGUI text = target.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (text != null) {
+                text.text = label;
+                text.fontSize = fontSize;
+                text.fontStyle = FontStyles.Normal;
+                text.color = new Color(0.95f, 0.98f, 1f, 0.98f);
+            }
+
             ClearPersistentCalls(button);
             return button;
         }
 
-        private static TextMeshProUGUI BuildCounter(Transform parent, Button template) {
+        private static TextMeshProUGUI BuildCounter(Transform parent, Button template,
+            Vector2 anchor, Vector2 anchoredPosition, Vector2 size, float fontSize) {
             TextMeshProUGUI existing = FindChildComponent<TextMeshProUGUI>(parent, PartCounterName);
+            GameObject target;
+
             if (existing != null) {
-                return existing;
+                target = existing.gameObject;
+            } else {
+                target = new GameObject(PartCounterName, typeof(RectTransform));
+                target.transform.SetParent(parent, false);
+                Undo.RegisterCreatedObjectUndo(target, "Create " + PartCounterName);
             }
 
-            TextMeshProUGUI templateText = template.GetComponentInChildren<TextMeshProUGUI>(true);
-            GameObject created = new GameObject(PartCounterName, typeof(RectTransform));
-            created.transform.SetParent(parent, false);
-            Undo.RegisterCreatedObjectUndo(created, "Create " + PartCounterName);
+            RectTransform rect = target.GetComponent<RectTransform>();
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = anchor;
+            rect.sizeDelta = size;
+            rect.anchoredPosition = anchoredPosition;
 
-            RectTransform rect = created.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0.5f, 0f);
-            rect.anchorMax = new Vector2(0.5f, 0f);
-            rect.pivot = new Vector2(0.5f, 0f);
-            rect.sizeDelta = new Vector2(280f, 88f);
-            rect.anchoredPosition = new Vector2(0f, 32f);
-
-            TextMeshProUGUI text = created.AddComponent<TextMeshProUGUI>();
+            TextMeshProUGUI text = GetOrAdd<TextMeshProUGUI>(target);
             text.alignment = TextAlignmentOptions.Center;
             text.textWrappingMode = TextWrappingModes.NoWrap;
             text.raycastTarget = false;
 
+            TextMeshProUGUI templateText = template.GetComponentInChildren<TextMeshProUGUI>(true);
             if (templateText != null) {
                 text.font = templateText.font;
-                text.fontSize = templateText.fontSize;
-                text.color = templateText.color;
+                text.color = new Color(0.76f, 0.90f, 1.00f, 0.95f);
             }
 
+            text.fontSize = fontSize;
             text.text = "-";
             return text;
         }
 
-        /// <summary>
-        /// The line that invites a passer-by to take over while the exhibit is touring itself.
-        ///
-        /// Sits on the bottom centre line above the navigator, which is the one band of the canvas
-        /// nothing else occupies - the existing buttons are stacked bottom-left and bottom-right.
-        /// </summary>
-        private static TextMeshProUGUI BuildAttractPrompt(Transform parent, Button template) {
+        private static TextMeshProUGUI BuildAttractPrompt(Transform parent, Button template,
+            Vector2 anchor, Vector2 anchoredPosition, Vector2 size, float fontSize) {
             TextMeshProUGUI existing = FindChildComponent<TextMeshProUGUI>(parent, AttractPromptName);
+            GameObject target;
+
             if (existing != null) {
-                return existing;
+                target = existing.gameObject;
+            } else {
+                target = new GameObject(AttractPromptName, typeof(RectTransform));
+                target.transform.SetParent(parent, false);
+                Undo.RegisterCreatedObjectUndo(target, "Create " + AttractPromptName);
             }
 
-            TextMeshProUGUI templateText = template.GetComponentInChildren<TextMeshProUGUI>(true);
-            GameObject created = new GameObject(AttractPromptName, typeof(RectTransform));
-            created.transform.SetParent(parent, false);
-            Undo.RegisterCreatedObjectUndo(created, "Create " + AttractPromptName);
+            RectTransform rect = target.GetComponent<RectTransform>();
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = anchor;
+            rect.sizeDelta = size;
+            rect.anchoredPosition = anchoredPosition;
 
-            RectTransform rect = created.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0.5f, 0f);
-            rect.anchorMax = new Vector2(0.5f, 0f);
-            rect.pivot = new Vector2(0.5f, 0f);
-            rect.sizeDelta = new Vector2(900f, 70f);
-            rect.anchoredPosition = new Vector2(0f, 150f);
-
-            TextMeshProUGUI text = created.AddComponent<TextMeshProUGUI>();
+            TextMeshProUGUI text = GetOrAdd<TextMeshProUGUI>(target);
             text.alignment = TextAlignmentOptions.Center;
             text.textWrappingMode = TextWrappingModes.NoWrap;
             text.raycastTarget = false;
             text.text = "Touch a structure to explore";
 
+            TextMeshProUGUI templateText = template.GetComponentInChildren<TextMeshProUGUI>(true);
             if (templateText != null) {
                 text.font = templateText.font;
-                text.fontSize = templateText.fontSize * 1.1f;
-                text.color = templateText.color;
+                text.color = new Color(0.75f, 0.90f, 1.00f, 0.92f);
             }
 
-            created.SetActive(false);
+            text.fontSize = fontSize;
+            target.SetActive(false);
             return text;
         }
 
@@ -1005,6 +1205,21 @@ namespace ViitorCloud.KmaxDisplayExample.Editor {
             }
 
             inputSo.ApplyModifiedPropertiesWithoutUndo();
+
+            WireSceneSwitcher(exhibit, navigation.NextScene, audio, "VirtualExhibition WR");
+        }
+
+        internal static void WireSceneSwitcher(GameObject exhibit, Button nextSceneButton,
+            AnatomyAudioDirector audio, string nextSceneName) {
+            ExhibitSceneSwitcher switcher = GetOrAdd<ExhibitSceneSwitcher>(exhibit);
+            SerializedObject switcherSo = new SerializedObject(switcher);
+            SetIfPresent(switcherSo, "nextSceneButton", nextSceneButton);
+            SetIfPresent(switcherSo, "audioDirector", audio);
+            SerializedProperty sceneNameProp = switcherSo.FindProperty("nextSceneName");
+            if (sceneNameProp != null) {
+                sceneNameProp.stringValue = nextSceneName;
+            }
+            switcherSo.ApplyModifiedPropertiesWithoutUndo();
         }
 
         internal static void SetIfPresent(SerializedObject so, string fieldName, Object value) {

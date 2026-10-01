@@ -165,6 +165,13 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         private void Apply(int index) {
+            // See the note in EyeFocusView.SetFadedExcept: a domain reload under a running scene
+            // clears the resolved arrays without calling Awake again, so a channel can be asked to
+            // apply itself before there is anything to apply it to.
+            if (instances == null || index >= instances.Length || instances[index] == null) {
+                return;
+            }
+
             Material[] materials = instances[index];
             Color colour = channels[index].Emission * level[index];
 

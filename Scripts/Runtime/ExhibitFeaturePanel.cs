@@ -32,6 +32,14 @@ namespace ViitorCloud.KmaxDisplayExample {
         private Button[] variationButtons = new Button[0];
         [SerializeField] private Color selectedColor = new Color(0.22f, 0.42f, 0.62f, 0.95f);
         [SerializeField] private Color unselectedColor = new Color(0.16f, 0.20f, 0.27f, 0.92f);
+        [SerializeField, Tooltip("Optional, one per variant. When these are supplied the selected " +
+            "variant is marked by switching its marker on instead of by recolouring the button - " +
+            "which is the only option when the button's own colour is the thing being chosen, as " +
+            "it is for a row of paint swatches.")]
+        private GameObject[] variationMarkers = new GameObject[0];
+        [SerializeField, Tooltip("Optional. Names the selected variant, for a row of swatches that " +
+            "carries no text of its own.")]
+        private TextMeshProUGUI variationLabel;
 
         private IExhibitMachinery machinery;
         private bool isTransparent;
@@ -98,6 +106,9 @@ namespace ViitorCloud.KmaxDisplayExample {
 
         private void OnTransparencyClicked() {
             SetTransparent(!isTransparent);
+            if (AnatomyAudioDirector.Instance != null) {
+                AnatomyAudioDirector.Instance.PlaySelect();
+            }
         }
 
         public void SetTransparent(bool transparent) {
@@ -118,6 +129,10 @@ namespace ViitorCloud.KmaxDisplayExample {
             selectedVariation = index;
             machinery.ApplyVariation(index);
             RefreshVariationButtons();
+
+            if (AnatomyAudioDirector.Instance != null) {
+                AnatomyAudioDirector.Instance.PlaySelect();
+            }
         }
 
         /// <summary>
@@ -156,6 +171,24 @@ namespace ViitorCloud.KmaxDisplayExample {
         /// touches that button - hovering any build would clear the highlight on the selected one.
         /// </summary>
         private void RefreshVariationButtons() {
+            if (variationLabel != null && machinery != null
+                && selectedVariation >= 0 && selectedVariation < machinery.VariationCount) {
+                variationLabel.text = machinery.GetVariationName(selectedVariation);
+            }
+
+            // A swatch's own colour is what is being chosen, so it cannot also be the thing that
+            // says which one is chosen. Where markers are supplied they take that job over and the
+            // ColorBlock is left alone entirely.
+            if (variationMarkers.Length > 0) {
+                for (int i = 0; i < variationMarkers.Length; i++) {
+                    if (variationMarkers[i] != null) {
+                        variationMarkers[i].SetActive(i == selectedVariation);
+                    }
+                }
+
+                return;
+            }
+
             for (int i = 0; i < variationButtons.Length; i++) {
                 if (variationButtons[i] == null) {
                     continue;

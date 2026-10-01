@@ -26,7 +26,7 @@ namespace ViitorCloud.KmaxDisplayExample {
         [Header("Lift")]
         [SerializeField, Tooltip("Canvas units the button rises while hovered. On a stereo panel a " +
             "small rise reads as the control coming to meet the pointer.")]
-        private float hoverLift = 7f;
+        private float hoverLift = 3.5f;
 
         [Header("Tint")]
         [SerializeField, Tooltip("Graphic tinted on hover. Left empty, no tinting happens.")]
@@ -164,6 +164,8 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             if (HoverChanged != null) {
                 HoverChanged(true);
+            } else if (AnatomyAudioDirector.Instance != null) {
+                AnatomyAudioDirector.Instance.PlayHover();
             }
         }
 
@@ -184,6 +186,10 @@ namespace ViitorCloud.KmaxDisplayExample {
         public void OnPointerDown(PointerEventData eventData) {
             _isPressed = true;
             _flashProgress = 1f;
+
+            if ((_selectable == null || _selectable.IsInteractable()) && AnatomyAudioDirector.Instance != null) {
+                AnatomyAudioDirector.Instance.PlayClick();
+            }
         }
 
         public void OnPointerUp(PointerEventData eventData) {

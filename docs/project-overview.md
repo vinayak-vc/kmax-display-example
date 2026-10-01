@@ -24,25 +24,23 @@ Because the base `docs/` folder is read-only, the AGENTS.md section 16
 documentation set for this module lives here
 (`Assets/Games/kmax-display-example/docs/`) rather than at the base project root.
 
-## Exhibits
+## Exhibits & Application Suite
 
-Two, both on the same runtime stack under `Scripts/Runtime` - every component works
-off an injected catalogue, pose set and model root, so nothing in it is specific to
-either model.
+The suite consists of an interactive 3D launcher and three fully realized exhibits, all running on the unified runtime stack under `Scripts/Runtime`:
 
-| | Eye anatomy | i4 engine |
-|---|---|---|
-| Scene | `Scenes/EyeAnatomy.unity` | `CarEngineAnimated - i4/VirtualExhibition WR.unity` |
-| Model | `Model/EyeAnatomy.glb` | `CarEngineAnimated - i4/Models/Enginei4.FBX` |
-| Labelled parts | 18 | 12 |
-| Explode poses | 23, baked from the model's clips | 19, authored - the model has no clips |
-| Build command | `Kmax/Eye Anatomy/Set Up Interaction Upgrades` | `Kmax/Engine Exhibit/Set Up Engine Exhibit` |
+| | Launcher | Eye anatomy | i4 engine | Volvo S90 |
+|---|---|---|---|---|
+| Scene | `Scenes/Launcher.unity` | `Scenes/EyeAnatomy.unity` | `Scenes/VirtualExhibition WR.unity` | `Scenes/VolvoS90.unity` |
+| Model | Preview models (Eye, Engine, Volvo) | `Model/EyeAnatomy.glb` | `CarEngineAnimated - i4/Models/Enginei4.FBX` | `Model/VOLVO/Volvo S90.fbx` |
+| Key Features | 3 interactive cards, rotating background 3D model, pop-out depth, load button | 18 labelled parts, 23 explode poses, pupil dilation, sclera focus | 12 parts, 19 authored poses, RPM procedural animation, X-Ray & variants | 8 tour stops, 4 hinged doors + sunroof, 8 lamp channels, engine audio, swatches |
+| Build command | `Kmax/Launcher/Set Up Launcher Scene` | `Kmax/Eye Anatomy/Set Up Interaction Upgrades` | `Kmax/Engine Exhibit/Set Up Engine Exhibit` | `Kmax/Volvo Exhibit/Set Up Volvo Exhibit` |
 
-Both commands find before they create, so re-running one changes nothing.
-
-The engine additionally has procedural machinery - `Enginei4` drives the crank, cams,
-pistons, valves, gears, pulleys and belts from a single RPM value - which runs while
-the engine is assembled and is frozen by `ExhibitMachineryGate` while it is apart.
+Every exhibit scene features:
+- **Cross-Scene Navigation**: Top-level "Next Scene" navigation button hooked to `ExhibitSceneSwitcher`.
+- **Persistent Ambient Audio**: Soothing background music stream across scenes with zero interruption (`DontDestroyOnLoad`).
+- **4-Color Stylus Feedback**: Dynamic beam colors for primary, secondary, and tertiary stylus buttons, plus an interactive highlight state.
+- **Glassmorphic Compact UI**: 50% scale, corner-pinned, non-blocking `UiAlwaysOnTop` canvas rendering.
+- **Double-Sided Rendering**: Global two-sided material pass preventing invisible backfaces on exploded and cutaway geometry.
 
 ## Host environment
 

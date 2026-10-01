@@ -95,6 +95,14 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             panels.ToggleGroup(index);
             RefreshPanelButton(index);
+
+            if (AnatomyAudioDirector.Instance != null) {
+                if (panels.IsGroupOpen(index)) {
+                    AnatomyAudioDirector.Instance.PlayExpand();
+                } else {
+                    AnatomyAudioDirector.Instance.PlayCollapse();
+                }
+            }
         }
 
         private void OnIgnitionClicked() {
@@ -103,6 +111,10 @@ namespace ViitorCloud.KmaxDisplayExample {
             }
 
             ignition.Toggle();
+
+            if (AnatomyAudioDirector.Instance != null) {
+                AnatomyAudioDirector.Instance.PlaySelect();
+            }
         }
 
         /// <summary>
@@ -118,6 +130,10 @@ namespace ViitorCloud.KmaxDisplayExample {
             lightsForced = !lightsForced;
             lights.SetAll(lightsForced);
             RefreshLightsButton();
+
+            if (AnatomyAudioDirector.Instance != null) {
+                AnatomyAudioDirector.Instance.PlaySelect();
+            }
         }
 
         private void OnResetClicked() {

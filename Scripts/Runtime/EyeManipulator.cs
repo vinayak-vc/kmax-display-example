@@ -429,11 +429,7 @@ namespace ViitorCloud.KmaxDisplayExample {
         }
 
         private bool IsPointerOverUI() {
-            if (EventSystem.current == null) {
-                return false;
-            }
-
-            return EventSystem.current.IsPointerOverGameObject();
+            return UiAlwaysOnTop.IsPointerOverUi();
         }
     }
 }

@@ -24,6 +24,10 @@ MonoBehaviour:
       scene: {fileID: 102900000, guid: 67abd83f739bd7c48b725547017752fa, type: 3}
     - active: 1
       scene: {fileID: 102900000, guid: 31e766b01a9e5ed42940dc8a8b9c998e, type: 3}
+    - active: 1
+      scene: {fileID: 102900000, guid: 7e32b5d3e0dd28741b32b3d0b981968b, type: 3}
+    - active: 1
+      scene: {fileID: 102900000, guid: 8f44a05c813f4d44bbecf0f065d9688b, type: 3}
     photonID: 
     agoraID: 
     projectSettings:
@@ -73,7 +77,7 @@ MonoBehaviour:
       companyName: ViitorX
       bundleId: 
       version: 1.0.0
-      versionCode: 3
+      versionCode: 4
       icon: {fileID: 2800000, guid: fbb45d2e3d041f44aa72f3eb61461694, type: 3}
       splashScreenLogo: {fileID: 0}
       splashScreenLogoBg: {fileID: 0}

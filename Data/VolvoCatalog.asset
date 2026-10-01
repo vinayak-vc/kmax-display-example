@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 67d20fe47c4b8b140be827ec2b0b2e70, type: 3}
+  m_Name: VolvoCatalog
+  m_EditorClassIdentifier: KmaxDisplayExample::ViitorCloud.KmaxDisplayExample.EyeAnatomyCatalog
+  parts:
+  - displayName: Cabin
+    description: Leather over a driver-focused dashboard, with a portrait touchscreen
+      in the centre console and a digital instrument display behind the wheel. The
+      gear selector is topped with Orrefors crystal. Try the interior swatches on
+      the right.
+    partPath: Interior
+    keepOthersSolid: 0
+  - displayName: Headlights
+    description: Full-LED headlamps behind a single moulded lens, with the T-shaped
+      daytime running lights - Thor's Hammer - that mark out the front of every modern
+      Volvo. Each reflector, emitter and lens is its own mesh, which is why they
+      can be lit one channel at a time.
+    partPath: Glass Headlight
+    keepOthersSolid: 1
+  - displayName: Tail lights
+    description: The C-shaped rear lamp signature, split between the body and the
+      boot lid so it stays unbroken when the car is shut. Six separate diffusers
+      and reflectors make up each side.
+    partPath: Frame Taillight
+    keepOthersSolid: 1
+  - displayName: Alloy wheels
+    description: Multi-spoke alloys over vented discs and fixed calipers. The tyre,
+      rim, hub, disc and caliper are modelled as five parts, so the wheel reads as
+      an assembly rather than a decal.
+    partPath: Rim FL
+    keepOthersSolid: 1
+  - displayName: Door mirrors
+    description: The wing mirrors carry their own indicator repeaters, which flash
+      with the car's. They are hinged to the door, so they swing out with it.
+    partPath: Panels/Door Front Left/Door Front Left Mirror
+    keepOthersSolid: 1
+  - displayName: Panoramic roof
+    description: A single pane of glass over both rows, which tilts at the rear.
+      Every glazed surface on this model arrived opaque and is made transparent by
+      the exhibit - without that there was no interior to see at all.
+    partPath: Panels/Sunroof Hinge/SunRoof
+    keepOthersSolid: 1
+  - displayName: Tailpipes
+    description: Twin trapezoidal tailpipes under the rear valance. The idle is synthesised
+      and played from here, so the exhaust note stays behind the car as the view
+      orbits.
+    partPath: Exhaust System
+    keepOthersSolid: 1
+  - displayName: Front seats
+    description: Contoured seats with integrated belts and adjustable bolsters. They
+      take their colour from the interior swatches along with the dashboard, console
+      and door cards.
+    partPath: Interior/Driver Seat
+    keepOthersSolid: 0

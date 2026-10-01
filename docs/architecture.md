@@ -615,3 +615,56 @@ they are nearly invisible against the dark background no matter how faint the
 ghosts are. The gold badge and the info panel still identify them. Fixing it
 properly means giving those two parts an opaque or emissive material, which is
 a change to the source art's look rather than to this code.
+
+---
+
+## Shared Suite Architecture
+
+### 1. Unified Glassmorphic UI & Motion System
+
+All scenes share a standardized visual design language and layout hierarchy:
+* **Geometry & Sizing**: Interfaces are compact (scaled 50% down from initial wireframes) to prevent occluding the 3D focal assets. Controls are anchored to the top-left; contextual informational panels are anchored to the top-right; global scene switches and resets live in the lower corners.
+* **Aesthetic**: Deep translucent slate glass backing (`#0f172a` at 70-85% alpha) with crisp cyan/white vector glyphs (`ExhibitIconFactory`), high-legibility TextMeshPro labels, and 1px borders.
+* **Motion (`UiButtonMotion`)**: Buttons feature smooth cubic/elastic hover expansion (1.04x scale) and press absorption (0.94x scale with subtle Z depression), accompanied by procedural click and select audio feedback.
+* **Non-Blocking Raycasts (`UiAlwaysOnTop`)**: All UI canvases render in screen-space / camera overlay with an explicit sort order above 3D geometry. This ensures pointer rays interact with UI without being intercepted by underlying 3D model colliders.
+
+### 2. Audio Pipeline & Procedural Synthesis (`AnatomyAudioDirector`)
+
+* **Persistent Music (`DontDestroyOnLoad`)**: The audio director instantiates as a singleton root (`AudioRoot`) and marks itself persistent via `Object.DontDestroyOnLoad()`. When switching between Launcher, Eye, Engine, and Volvo scenes, the soothing background music streams seamlessly without stutter, clicks, or resets.
+* **Procedural Synthesis (`ProceduralAudio`)**: Button clicks, hover ticks, part selection bursts, expand/collapse hums, and automotive starters/idles are synthesized algorithmically via math equations (sine/square bursts, filtered noise bursts, low-pass sweeps) with subtle randomized pitch variation (±5%). This gives instant zero-latency feedback without bloat from loose WAV files.
+* **Audio Ducking**: The audio director automatically ducks background music volume during speech, interaction bursts, or engine start sequences.
+
+### 3. 4-State Stylus Interaction System (`AnatomyStylusBeam`)
+
+The 3D stylus pointer provides continuous visual feedback through a dynamic `LineRenderer` beam and glowing tip:
+1. **Resting / Button 0 (Primary)**: Calm cyan beam (`#2EA3FF`), indicating standard laser pointing.
+2. **Button 1 (Back / Reset)**: Amber / orange beam (`#FFAA22`), indicating a back or reset action.
+3. **Button 2 (Tertiary / Option)**: Purple / magenta beam (`#B844FF`), indicating an alternate tool or mode toggle.
+4. **Interactable Selection (Active Hover / Press)**: Bright emerald green (`#33FF88`) whenever the stylus beam is aimed at a clickable button or 3D hotspot badge and the user initiates a selection. This gives immediate visual confirmation that the element under the crosshair is interactive.
+
+### 4. Cross-Scene Navigation (`ExhibitSceneSwitcher`)
+
+* Every scene contains a "Next Scene" navigation button built with `ExhibitUiFactory`.
+* `ExhibitSceneSwitcher` loops cyclically through the build settings: `Launcher` → `EyeAnatomy` → `VirtualExhibition WR` (Engine) → `VolvoS90` → `Launcher`.
+* Audio playback survives the scene load cleanly, and render pipeline parameters remain locked across scene transitions.
+
+### 5. Interactive 3D Launcher (`ExhibitLauncherController`)
+
+* `Scenes/Launcher.unity` hosts three interactive exhibit cards (Eye Anatomy, i4 Engine, Volvo S90) with high-resolution thumbnail artwork.
+* **Live 3D Background**: Selecting any tile dynamically instantiates and animates that exhibit's 3D model in the background behind the menu.
+* **Stereo Pop-Out**: The preview model rotates slowly (12°/s) and floats at a comfortable pop-out depth (+0.08 m) in front of the screen plane. The background preview ignores direct raycasts so only the launcher UI receives clicks.
+* A prominent **"Load Scene"** button emerges directly below the selected tile to enter the chosen exhibit.
+
+### 6. Double-Sided Material Pipeline (`ExhibitPostProcessing`)
+
+* In stereo cutaway and exploded views, single-sided meshes leave unnatural black holes on reverse faces.
+* `ExhibitPostProcessing.ApplyDoubleSidedMaterials()` walks all active renderers and persistent materials across the project, setting `_Cull = Off`, `_BUILTIN_CullMode = Off`, `_CullMode = Off`, and `doubleSidedGI = true`.
+* Executed at scene awake and as a permanent editor utility in `EyeAnatomySceneUpgrader.UpgradeMaterialsDoubleSided()`.
+
+### 7. Automotive Lighting & Shader Architecture (`VolvoExhibitBuilder`)
+
+* **Paint**: Body panels run on `Universal Render Pipeline/Complex Lit` with `_ClearCoat = 1`, `_ClearCoatMask = 1`, and `_ClearCoatSmoothness = 0.96`, reflecting a high-dynamic-range studio cubemap.
+* **Cabin Courtesy Lighting**: Point light inside the cabin is scaled strictly to model dimensions (`intensity = 0.0008f`, `range = 0.039m`, warm tungsten `RGBA(1.0, 0.92, 0.82)`) to prevent internal blowout.
+* **Dashboard Cockpit Displays**: Gauges and infotainment screens use dedicated emission channels (`Color(0.55f, 0.62f, 0.72f)`) simulating modern backlit LCD panels, separated from the soft overhead console lighting.
+* **Headlights**: Dual forward spot lights are focused to a 44° cone with 22° inner spot, throwing 0.22m at `0.018f` intensity, angled 4° downward onto the showroom floor.
+* **Post-Processing Persistence**: Neutral Tonemapping and Bloom components are registered via `AssetDatabase.AddObjectToAsset` on `AnatomyPostFX.asset`, preventing blown-out highlights and clipping.

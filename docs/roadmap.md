@@ -2,6 +2,45 @@
 
 ## Done
 
+- [x] **Volvo S90 Lighting & Post-Processing Overhaul.** Resolved interior blowout when starting
+      the car or turning on lights. Scaled cabin courtesy light to 0.0008f intensity, separated
+      warm ambient console glow from crisp LCD dashboard backlights, focused headlights to 44° cone
+      angled downward, persisted Tonemapping & Bloom on `AnatomyPostFX.asset`, and added ghost material
+      cleanup on exit.
+- [x] **Unified 4-Scene Exhibit Suite & Interactive Launcher.** Built `Scenes/Launcher.unity` with
+      interactive cards, dynamic rotating 3D background model preview, and pop-out depth. Added
+      seamless cross-scene cyclical switcher (`ExhibitSceneSwitcher`) connecting all exhibits.
+- [x] **Continuous Ambient Audio Stream.** Set up persistent `DontDestroyOnLoad` audio director,
+      providing unbroken soothing background music across scene switches. Replaced outdated sound
+      effects with modern synthesized micro-interaction cues.
+- [x] **Glassmorphic UI Miniaturization & Non-Blocking Sorting.** Shrunk interfaces by 50%, pinned
+      controls to top-left and info panels to top-right, added smooth hover/press spring motion
+      (`UiButtonMotion`), and enforced `UiAlwaysOnTop` canvas rendering to eliminate raycast occlusions.
+- [x] **4-State Stylus Interaction System.** Equipped Kmax Stylus with dynamic beam color states:
+      Calm Cyan (primary laser), Amber Orange (Back/Reset), Purple Magenta (Tertiary), and Emerald Green
+      (active interactive element confirmation).
+- [x] **Hotspot Pinning & Double-Sided Rendering.** Anchored hotspot badges tight to part geometry
+      (2–5 cm) without rotational swing, clamped badge height above the showroom floor, and enforced
+      global double-sided rendering (`_Cull Off`) across all 3D assets.
+- [x] **Volvo showroom and interface pass.** A lit floor with a window gobo on the key
+      light, a real cast shadow, a studio cubemap for the paint to reflect, and clear-coated
+      paint on Complex Lit. Six generated icon glyphs on the car's controls. The supplied
+      S90 start and idle recordings, and a background track. Clipping measured down from
+      14.43% of frame to 4.29%.
+- [x] **Volvo interior focus.** 31 cabin meshes gathered under one `Interior` node that
+      `EyeFocusView` frames and ghosts the rest of the car around. Focus-and-ghost, as
+      planned - the camera cannot enter the cabin at exhibit scale.
+- [x] **Volvo paint and interior trim swatches.** `VehicleFinishSwatches` on
+      `ExhibitFeaturePanel` / `IExhibitMachinery`: five paints on one body material, four
+      trim colourways across eight interior materials, written to per-renderer copies so
+      the project's own `.mat` files are never repainted.
+- [x] **Volvo guided tour.** Eight stops round the car, numbered badges pushed clear of
+      the bodywork, Next/Back, info panel and idle attract loop - the shared runtime.
+- [x] **Volvo presentation pass.** Cabin lamp brought down from a floodlight, swatches
+      turned into colour chips, info panel text made to shrink to fit, a generated studio
+      cubemap for the paint to reflect, the car turned three-quarter on to the viewer, and
+      the idle retuned towards the engine an S90 actually has.
+
 - [x] **Volvo S90 exhibit**: four doors cut from their mirrored meshes and hinged, plus
       sunroof; seven lamp channels; a staged ignition with synthesised
       start and idle audio; glass made transparent. 6.5M triangles across both eyes runs
@@ -79,15 +118,48 @@
 
 ## Next
 
-- [ ] **Volvo interior focus.** A catalogue entry bounded on the cabin plus a ghost over
-      shell, roof and glass. Note the camera cannot fly into the cabin - at exhibit scale
-      it is smaller than the fly controller minimum distance - so this is a focus-and-ghost,
-      the same way the eye frames a structure.
-- [ ] **Volvo paint and interior trim swatches.** `Car Paint` is one material, and the
-      interior ships Black / Blue / Brown / Tan textures for dash, console, door panels
-      and seats. Reuse `ExhibitFeaturePanel` / `IExhibitMachinery` rather than rebuilding.
-- [ ] **Volvo guided tour**: catalogue, hotspots, navigator and attract mode, all of which
-      are already model agnostic.
+### Kmax Showcase Suite - four new scenes, from scratch
+
+Full design, milestones and task tracker in **[showcase-suite.md](showcase-suite.md)**.
+Not an extension of any existing exhibit; a separate direct-manipulation stack beside the
+catalogue-driven one. Ordered so each scene proves one more thing about the hardware, which
+is also the client-demo script and roughly the order of increasing risk.
+
+- [ ] **M0 - Ground truth on the hardware.** A half-day spike, and a gate on everything
+      else. Measures whether the tracked pen tip and the rendered geometry actually occupy
+      the same point to within a few millimetres. Nothing in this project has ever needed
+      that to be true - the existing exhibits use the stylus as a ray-caster - so it is an
+      assumption. If it fails, Stack and Probe do not survive as designed.
+- [x] **M1 - Shared core.** `StereoVolume` (the 0.13 m pop-out / 0.30 m depth budget as a
+      first-class object, derived from the SDK rather than hard-coded), `StylusTip`,
+      `StylusGrab`, the scene lifecycle and a comfort overlay. This is the internal-reference
+      deliverable, more than the scenes are.
+- [x] **M2 - Bloom.** Motes drift out through the screen plane and burst on the pen tip.
+      Cheapest scene; exercises the tip end to end before the grab system is built on it.
+- [x] **M3 - Stack.** Blocks picked up by the pen tip, lifted out through the window and
+      stacked on a platform at zero parallax. The headline scene: you cannot judge the
+      placement without stereo.
+- [x] **M4 - Probe.** Thread the tip along a tube without touching the wall. The purest test
+      of co-location.
+- [ ] **M5 - Reef.** Fish and coral filling the volume, one nosing out through the glass.
+      The art-heavy one; ships stylised first.
+- [ ] **M6 - Hub, attract loops, analytics, unattended run, docs.**
+
+Estimate 16-23 working days, provisional until M0 lands.
+
+### Carried over
+
+
+- [ ] **Sharpen the window gobo.** It reads as light through a window, but the panes
+      resolve at roughly tile scale on the floor. `cookieSize2D` is 0.15 m; a smaller tile
+      or a larger cookie texture would give a finer pattern.
+- [ ] **Exercise the whole exhibit on the Kmax hardware.** None of the stereo-specific
+      judgements here have been checked on the device. The showroom floor is kept to a
+      0.45 m radius specifically to avoid a window violation, and that is reasoning rather
+      than observation until someone looks at it in stereo.
+- [ ] **Decide whether the exhibit wants ambience back.** The drifting mote layers are off
+      on the car - the floor is a better depth cue and they read as speckle over it - so
+      there is nothing moving while nobody is touching it apart from the attract tour.
 - [ ] Move `Volvo S90.blend` out of `Assets/`. It is 626 MB, Unity has failed to import it
       and retries on every refresh, which launches Blender headlessly against a file that
       is open.

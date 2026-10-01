@@ -43,6 +43,9 @@ namespace ViitorCloud.KmaxDisplayExample {
         private AnatomyAudioDirector audioDirector;
         [SerializeField] private string expandLabel = "Expand eye";
         [SerializeField] private string collapseLabel = "Close eye";
+        [SerializeField, Tooltip("What the catalog's entries are called, for the counter's resting " +
+            "text. 'structures' for the eye; a car's tour stops are features, not structures.")]
+        private string partNoun = "structures";
 
         [Header("Hotspots")]
         [SerializeField, Range(0.001f, 0.05f)] private float hotspotWorldRadius = 0.005f;
@@ -211,7 +214,10 @@ namespace ViitorCloud.KmaxDisplayExample {
             selectedIndex = index;
             hotspots[index].SetSelected(true);
 
-            focusView.Focus(partTransforms[index]);
+            // The catalogue decides whether the rest of the model fades behind this part. On a
+            // car only the two interior stops want it; ghosting the body to show a wheel hides the
+            // paint the viewer just picked.
+            focusView.Focus(partTransforms[index], !partDefinitions[index].KeepOthersSolid);
             infoPanel.Show(partDefinitions[index].DisplayName, partDefinitions[index].Description);
 
             if (particles != null) {
@@ -225,6 +231,7 @@ namespace ViitorCloud.KmaxDisplayExample {
             FlyToPart(index);
 
             SetBackButtonVisible(true);
+            SetNavigationVisible(true);
             RefreshExpandLabel();
             RefreshPartCounter();
         }
@@ -330,7 +337,7 @@ namespace ViitorCloud.KmaxDisplayExample {
             // Badges stay up while a part is focused so another part is one click away rather
             // than a trip through Back. They hold their on-screen size themselves.
             SetHotspotsVisible(expanded);
-            SetNavigationVisible(expanded);
+            SetNavigationVisible(expanded || focusView.IsFocused);
 
             if (!expanded) {
                 pendingSelection = -1;
@@ -339,6 +346,7 @@ namespace ViitorCloud.KmaxDisplayExample {
             }
 
             // Directions first: the flight angle for the pending part is read from them.
+            hasViewDirections = false;
             CacheViewDirections();
             RefreshPartCounter();
 
@@ -409,57 +417,58 @@ namespace ViitorCloud.KmaxDisplayExample {
         /// <summary>
         /// Where a part's badge floats.
         ///
-        /// By default it sits just in front of the part's own front face, which is right for a model
-        /// that comes apart: once it is open every part has clear air in front of it, and a badge
-        /// there reads as belonging to that part rather than to the shell it was inside.
+        /// For models that come apart (Eye, Engine):
+        /// Sits tight against the front/visible surface of the part along the model's front axis.
         ///
-        /// A model that never comes apart has no such air. On the car, a badge in front of the
-        /// grille is a badge inside the front bumper. <paramref name="outside"/> pushes it out to
-        /// the model's own silhouette instead, along the line from the model's centre through the
-        /// part's - which puts the wheels' badge beside the arch, the sunroof's above the roof and
-        /// the tailpipes' behind the car, whichever way the viewer has orbited to.
+        /// For models that do not come apart (Volvo car):
+        /// Sits tight beside/above the exterior features with guaranteed clearance above the floor.
         /// </summary>
-        private Vector3 HotspotPosition(Bounds partBounds, Bounds modelBounds, bool outside) {
+        private Vector3 HotspotPosition(Bounds partBounds, Bounds modelLocalBounds, bool outside) {
+            float clearance = hotspotFrontGap + hotspotWorldRadius;
+
+            // Resolve floor height from model bounds to guarantee badges never touch or clip the floor
+            float floorLevel = modelRoot.position.y;
+            if (modelLocalBounds.size != Vector3.zero) {
+                Vector3 modelMin = modelRoot.TransformPoint(modelLocalBounds.min);
+                floorLevel = modelMin.y;
+            }
+            float minSafeY = floorLevel + hotspotWorldRadius + 0.006f;
+
             if (!outside) {
-                // The viewer looks along +Z, so the part's front face is at its bounds minimum.
-                return new Vector3(
-                    partBounds.center.x,
-                    partBounds.center.y,
-                    partBounds.min.z - hotspotFrontGap - hotspotWorldRadius);
+                // Sits tight on the front face of the part (-Z in model local space)
+                Vector3 localFront = modelRoot.rotation * Vector3.back;
+                Vector3 pos = partBounds.center + localFront * (partBounds.extents.z + clearance);
+                if (pos.y < minSafeY) {
+                    pos.y = minSafeY;
+                }
+                return pos;
             }
 
-            Vector3 direction = partBounds.center - modelBounds.center;
-
-            // A part sitting on the model's own centre gives no direction to push along, so it
-            // falls back to the viewer's side of the model.
-            if (direction.sqrMagnitude <= Mathf.Epsilon) {
-                direction = Vector3.back;
+            // For the Volvo car: place each badge tight to the part's exterior surface
+            Vector3 carCenter = modelRoot.TransformPoint(modelLocalBounds.center);
+            Vector3 dir = partBounds.center - carCenter;
+            if (dir.sqrMagnitude <= Mathf.Epsilon) {
+                dir = modelRoot.rotation * Vector3.back;
             } else {
-                direction.Normalize();
+                dir.Normalize();
             }
 
-            float surface = DistanceToSurface(modelBounds.extents, direction);
-            return modelBounds.center + direction * (surface + hotspotFrontGap + hotspotWorldRadius);
-        }
-
-        /// <summary>
-        /// How far a box of the given half-size reaches from its centre along one direction: the
-        /// nearest of the three slabs the ray leaves through.
-        /// </summary>
-        private static float DistanceToSurface(Vector3 extents, Vector3 direction) {
-            float distance = AxisDistance(extents.x, direction.x);
-            distance = Mathf.Min(distance, AxisDistance(extents.y, direction.y));
-            distance = Mathf.Min(distance, AxisDistance(extents.z, direction.z));
-            return float.IsInfinity(distance) ? 0f : distance;
-        }
-
-        private static float AxisDistance(float extent, float component) {
-            float magnitude = Mathf.Abs(component);
-            if (magnitude <= Mathf.Epsilon) {
-                return float.PositiveInfinity;
+            // If direction points downward towards the floor, lift it so it sits beside the part
+            if (dir.y < 0.12f) {
+                dir.y = 0.15f;
+                dir.Normalize();
             }
 
-            return extent / magnitude;
+            // Offset tightly from the PART's own bounds (approx. 2.5 - 3.5 cm from the part)
+            float partSurface = Mathf.Max(0.008f, Mathf.Min(partBounds.extents.x, Mathf.Min(partBounds.extents.y, partBounds.extents.z)));
+            Vector3 outsidePos = partBounds.center + dir * (partSurface + clearance);
+
+            // Strict floor clearance: mathematically guarantee the badge is always comfortably above the showroom floor
+            if (outsidePos.y < minSafeY) {
+                outsidePos.y = minSafeY;
+            }
+
+            return outsidePos;
         }
 
         private void BuildHotspots() {
@@ -474,9 +483,10 @@ namespace ViitorCloud.KmaxDisplayExample {
             Camera activeCamera = ResolveActiveCamera();
             EyePartColliders.Result colliderResult = new EyePartColliders.Result();
 
-            // Measured before the first badge is parented in, so it describes the model alone.
+            // Measured before the first badge is parented in, so it describes the model alone, and
+            // in the model's own axes so that turning it does not inflate the box.
             Bounds modelBounds;
-            bool hasModelBounds = EyePartBounds.TryGet(modelRoot, out modelBounds);
+            bool hasModelBounds = EyePartBounds.TryGetLocal(modelRoot, modelRoot, out modelBounds);
             if (hotspotsOutsideModel && !hasModelBounds) {
                 Debug.LogWarning($"{nameof(EyeAnatomyController)} found no renderer under '{modelRoot.name}', " +
                     $"so {nameof(hotspotsOutsideModel)} has nothing to measure; markers fall back to their " +
@@ -511,6 +521,11 @@ namespace ViitorCloud.KmaxDisplayExample {
                     partPickers[partCount] = picker;
                 }
 
+                Transform existing = part.Find("Hotspot_" + definitions[i].DisplayName);
+                if (existing != null) {
+                    DestroyImmediate(existing.gameObject);
+                }
+
                 EyeHotspot hotspot = Instantiate(hotspotPrefab, part, false);
                 hotspot.name = "Hotspot_" + definitions[i].DisplayName;
 
@@ -537,7 +552,10 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             if (partCount == 0) {
                 Debug.LogError($"{nameof(EyeAnatomyController)} built no hotspots; check the catalog's part paths.", this);
+                return;
             }
+
+            CacheViewDirections();
         }
 
         /// <summary>
@@ -632,7 +650,7 @@ namespace ViitorCloud.KmaxDisplayExample {
 
             partCounterLabel.text = selectedIndex >= 0
                 ? $"{selectedIndex + 1} / {partCount}"
-                : $"{partCount} structures";
+                : $"{partCount} {partNoun}";
         }
 
         private enum AudioCue {

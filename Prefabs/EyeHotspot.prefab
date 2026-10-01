@@ -448,7 +448,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.5
+  m_Radius: 0.68
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &7878450561429163233
 MonoBehaviour:
@@ -467,9 +467,9 @@ MonoBehaviour:
   numberText: {fileID: 1253843713242231015}
   selectionHalo: {fileID: 6310852437837930327}
   haloRenderer: {fileID: 542402172658998822}
-  idleBadgeColor: {r: 0.9, g: 0.95, b: 1, a: 0.85}
-  hoverBadgeColor: {r: 0.5, g: 0.85, b: 1, a: 1}
-  selectedBadgeColor: {r: 1, g: 0.82, b: 0.35, a: 1}
+  idleBadgeColor: {r: 0.22, g: 0.78, b: 0.98, a: 0.92}
+  hoverBadgeColor: {r: 0.28, g: 0.98, b: 0.86, a: 1}
+  selectedBadgeColor: {r: 1, g: 0.78, b: 0.22, a: 1}
   idleTextColor: {r: 1, g: 1, b: 1, a: 0.95}
   hoverTextColor: {r: 1, g: 1, b: 1, a: 1}
   selectedTextColor: {r: 1, g: 0.95, b: 0.75, a: 1}
@@ -478,6 +478,7 @@ MonoBehaviour:
   pulseSpeed: 2.2
   selectedScale: 1.22
   hoverLift: 0.0025
+  floatBobAmplitude: 0.06
   animatePopIn: 1
   popInDuration: 0.34
   popInStagger: 0.035
